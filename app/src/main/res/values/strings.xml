@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">我的记事本</string>
+    <string name="untitled">无标题</string>
+    <string name="empty_hint">点击右下角 + 新建一条笔记</string>
+    <string name="save">保存</string>
+    <string name="delete">删除</string>
+    <string name="note_deleted">已删除</string>
+    <string name="note_empty">笔记内容不能为空</string>
+    <string name="title_hint">标题</string>
+    <string name="content_hint">写点什么…</string>
+</resources>
