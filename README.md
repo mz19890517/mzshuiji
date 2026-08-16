@@ -1,25 +1,26 @@
 # 我的记事本 (Notebook)
 
-一个简单轻量的 Android 记事本应用。
+基于 [Quillpad](https://github.com/quillpad/quillpad) 的开源 Markdown 记事本应用,供个人修改使用。
 
 ## 功能
 
-- 笔记列表,按更新时间倒序排列
-- 新建 / 编辑 / 删除笔记
-- 笔记包含标题、正文与更新时间
-- 数据通过 SQLite 本地持久化,无需网络
-
-## 技术
-
-- Kotlin + Material 3,单 Activity + RecyclerView 列表
-- 原生 SQLite (SQLiteOpenHelper),无额外数据库依赖
-- minSdk 24 (Android 7.0),targetSdk / compileSdk 35
+- 支持 Markdown 的笔记
+- 任务清单 / 置顶 / 隐藏笔记
+- 提醒、语音录音与文件附件
+- 笔记本分组、标签、归档、搜索
+- 文件同步、Nextcloud 同步(实验性)、ZIP 备份还原
+- 明暗模式与多种配色方案
 
 ## 构建
 
 仓库配置了 GitHub Actions,推送到 `main` 分支后自动构建 APK:
 
 - 在仓库的 **Actions** 页面查看构建状态
-- 构建完成后到对应运行记录里下载 `notebook-debug` / `notebook-release` 构件
+- 构建完成后到对应运行记录里下载 `quillpad-debug` 构件
 
-release 版本使用 debug 签名,可直接安装测试。
+debug 版本使用调试签名,可直接安装测试。
+
+## 数据与许可
+
+- 数据通过本地数据库存储,可导出备份
+- 上游代码采用 GPL-3.0 许可(见 LICENSE)
