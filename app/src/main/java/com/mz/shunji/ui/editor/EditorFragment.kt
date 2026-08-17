@@ -973,9 +973,9 @@ class EditorFragment : BaseFragment(R.layout.fragment_editor) {
                             }
                             model.reorderAttachments(newAttachments, newContent.trim())
                         },
-                        onAttachmentDropped = { sourcePath, targetPath ->
+                        onAttachmentDropped = { sourcePath, targetPath, insertBefore ->
                             val note = data.note ?: return@renderInlineContent
-                            val newContent = InlineContent.rearrangeMarkers(note.content, sourcePath, targetPath)
+                            val newContent = InlineContent.rearrangeMarkers(note.content, sourcePath, targetPath, insertBefore)
                             if (newContent != note.content) {
                                 model.setNoteContent(newContent)
                             }
@@ -1322,9 +1322,9 @@ class EditorFragment : BaseFragment(R.layout.fragment_editor) {
                         }
                         model.reorderAttachments(newAttachments, newContent.trim())
                     },
-                    onAttachmentDropped = { sourcePath, targetPath ->
+                    onAttachmentDropped = { sourcePath, targetPath, insertBefore ->
                         val currentNote = data.note ?: return@renderInlineContent
-                        val newContent = InlineContent.rearrangeMarkers(currentNote.content, sourcePath, targetPath)
+                        val newContent = InlineContent.rearrangeMarkers(currentNote.content, sourcePath, targetPath, insertBefore)
                         if (newContent != currentNote.content) {
                             model.setNoteContent(newContent)
                         }

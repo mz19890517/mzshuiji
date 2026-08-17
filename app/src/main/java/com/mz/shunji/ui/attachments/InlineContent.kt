@@ -55,17 +55,22 @@ object InlineContent {
 
     fun stripMarkers(content: String): String = content.replace(regex, "")
 
-    fun rearrangeMarkers(content: String, fromPath: String, toPath: String): String {
+    fun rearrangeMarkers(content: String, sourcePath: String, targetPath: String, insertBefore: Boolean): String {
         val allMarkers = regex.findAll(content).map { it.value }.toList()
-        val fromMarker = "$PREFIX$fromPath$SUFFIX"
-        val toMarker = "$PREFIX$toPath$SUFFIX"
-        val fromIdx = allMarkers.indexOf(fromMarker)
-        val toIdx = allMarkers.indexOf(toMarker)
-        if (fromIdx < 0 || toIdx < 0 || fromIdx == toIdx) return content
+        val sourceMarker = "$PREFIX$sourcePath$SUFFIX"
+        val targetMarker = "$PREFIX$targetPath$SUFFIX"
+        val sourceIdx = allMarkers.indexOf(sourceMarker)
+        val targetIdx = allMarkers.indexOf(targetMarker)
+        if (sourceIdx < 0 || targetIdx < 0 || sourceIdx == targetIdx) return content
 
         val reordered = allMarkers.toMutableList()
-        reordered.removeAt(fromIdx)
-        reordered.add(toIdx, fromMarker)
+        val item = reordered.removeAt(sourceIdx)
+        val insertIdx = if (insertBefore) {
+            if (sourceIdx < targetIdx) targetIdx - 1 else targetIdx
+        } else {
+            if (sourceIdx < targetIdx) targetIdx else targetIdx + 1
+        }
+        reordered.add(insertIdx.coerceIn(0, reordered.size), item)
 
         var result = content
         for ((i, marker) in allMarkers.withIndex()) {
@@ -132,7 +137,7 @@ fun renderInlineContent(
     onAttachmentLongClick: ((Attachment) -> Boolean)? = null,
     onAttachmentMenuClick: ((Attachment) -> Unit)? = null,
     onAttachmentsReordered: ((List<Attachment>) -> Unit)? = null,
-    onAttachmentDropped: ((sourcePath: String, targetPath: String) -> Unit)? = null,
+    onAttachmentDropped: ((sourcePath: String, targetPath: String, insertBefore: Boolean) -> Unit)? = null,
     isEditMode: Boolean = false,
 ) {
     container.removeAllViews()
@@ -260,7 +265,9 @@ fun renderInlineContent(
                             DragEvent.ACTION_DROP -> {
                                 val sourcePath = dragEvent.clipData?.getItemAt(0)?.text?.toString() ?: ""
                                 if (sourcePath.isNotEmpty() && sourcePath != attPath && onAttachmentDropped != null) {
-                                    onAttachmentDropped(sourcePath, attPath)
+                                    val viewHeight = v.height
+                                    val insertBefore = dragEvent.y < viewHeight * 0.5f
+                                    onAttachmentDropped(sourcePath, attPath, insertBefore)
                                 }
                                 v.alpha = 1f
                                 true
