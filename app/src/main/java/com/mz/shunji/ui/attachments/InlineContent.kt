@@ -369,9 +369,9 @@ private fun bindInlineAttachment(
             bar.addView(fileNameView)
 
             val fileUri = attachment.uri(context)
-            val fileSize = try {
+            val fileSize = if (fileUri != null) try {
                 context.contentResolver.openInputStream(fileUri)?.use { it.available().toLong() } ?: 0L
-            } catch (_: Exception) { 0L }
+            } catch (_: Exception) { 0L } else 0L
             val sizeText = formatFileSize(fileSize)
             val sizeView = TextView(context).apply {
                 text = sizeText
