@@ -21,6 +21,7 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.widget.AppCompatTextView
 import androidx.core.content.ContextCompat
 import androidx.core.view.isVisible
+import androidx.core.widget.NestedScrollView
 import coil.decode.VideoFrameDecoder
 import coil.fetch.Fetcher
 import coil.load
@@ -136,7 +137,66 @@ fun renderInlineContent(
     container.removeAllViews()
 
     val segments = InlineContent.parse(note.content, note.attachments)
-    var dragIndex = -1
+
+    val segmentToAttIndex = mutableMapOf<Int, Int>()
+    var attCount = 0
+    segments.forEachIndexed { idx, seg ->
+        if (seg is InlineContent.Segment.AttachmentRef) {
+            segmentToAttIndex[idx] = attCount++
+        }
+    }
+
+    var dragAttIndex = -1
+    var lastDragScreenY = 0f
+    val autoScrollHandler = Handler(Looper.getMainLooper())
+    var isAutoScrolling = false
+
+    fun findNestedScrollView(): NestedScrollView? {
+        var p: ViewParent? = container.parent
+        while (p != null) {
+            if (p is NestedScrollView) return p
+            p = p.parent
+        }
+        return null
+    }
+
+    val autoScrollRunnable = object : Runnable {
+        override fun run() {
+            val sv = findNestedScrollView() ?: return
+            val screenHeight = sv.height
+            val edgeZone = (120 * context.resources.displayMetrics.density).toInt()
+            val maxSpeed = (30 * context.resources.displayMetrics.density).toInt()
+
+            val scrollAmount = when {
+                lastDragScreenY < edgeZone && lastDragScreenY > 0 -> {
+                    val ratio = 1f - (lastDragScreenY / edgeZone.toFloat())
+                    -(maxSpeed * ratio * ratio).toInt()
+                }
+                lastDragScreenY > screenHeight - edgeZone && lastDragScreenY < screenHeight -> {
+                    val ratio = 1f - ((screenHeight - lastDragScreenY) / edgeZone.toFloat())
+                    (maxSpeed * ratio * ratio).toInt()
+                }
+                else -> 0
+            }
+
+            if (scrollAmount != 0) {
+                sv.smoothScrollBy(0, scrollAmount)
+            }
+            autoScrollHandler.postDelayed(this, 40L)
+        }
+    }
+
+    fun startAutoScroll() {
+        if (!isAutoScrolling) {
+            isAutoScrolling = true
+            autoScrollHandler.post(autoScrollRunnable)
+        }
+    }
+
+    fun stopAutoScroll() {
+        isAutoScrolling = false
+        autoScrollHandler.removeCallbacks(autoScrollRunnable)
+    }
 
     segments.forEachIndexed { index, segment ->
         when (segment) {
@@ -169,6 +229,8 @@ fun renderInlineContent(
                 bindInlineAttachment(binding, context, segment.attachment, maxAttachmentHeight)
 
                 if (!isEditMode) {
+                    val attachmentIndex = segmentToAttIndex[index] ?: -1
+
                     val gestureDetector = GestureDetector(context, object : GestureDetector.SimpleOnGestureListener() {
                         override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
                             onAttachmentMenuClick?.invoke(segment.attachment)
@@ -192,7 +254,7 @@ fun renderInlineContent(
                     binding.root.setOnDragListener { v, dragEvent ->
                         when (dragEvent.action) {
                             DragEvent.ACTION_DRAG_STARTED -> {
-                                dragIndex = dragEvent.clipData?.getItemAt(0)?.text?.toString()?.toIntOrNull() ?: -1
+                                dragAttIndex = dragEvent.clipData?.getItemAt(0)?.text?.toString()?.toIntOrNull() ?: -1
                                 v.alpha = 0.5f
                                 true
                             }
@@ -200,17 +262,23 @@ fun renderInlineContent(
                                 v.alpha = 0.8f
                                 true
                             }
+                            DragEvent.ACTION_DRAG_LOCATION -> {
+                                val loc = IntArray(2)
+                                v.getLocationOnScreen(loc)
+                                lastDragScreenY = loc[1] + dragEvent.y
+                                true
+                            }
                             DragEvent.ACTION_DRAG_EXITED -> {
                                 v.alpha = 0.5f
                                 true
                             }
                             DragEvent.ACTION_DROP -> {
-                                val targetIndex = index
-                                if (dragIndex >= 0 && dragIndex != targetIndex && onAttachmentsReordered != null) {
+                                val targetAttIndex = attachmentIndex
+                                if (dragAttIndex >= 0 && dragAttIndex != targetAttIndex && onAttachmentsReordered != null) {
                                     val attachments = note.attachments.toMutableList()
-                                    if (dragIndex < attachments.size && targetIndex < attachments.size) {
-                                        val item = attachments.removeAt(dragIndex)
-                                        attachments.add(targetIndex, item)
+                                    if (dragAttIndex < attachments.size && targetAttIndex < attachments.size) {
+                                        val item = attachments.removeAt(dragAttIndex)
+                                        attachments.add(targetAttIndex, item)
                                         onAttachmentsReordered(attachments)
                                     }
                                 }
@@ -219,7 +287,8 @@ fun renderInlineContent(
                             }
                             DragEvent.ACTION_DRAG_ENDED -> {
                                 v.alpha = 1f
-                                dragIndex = -1
+                                dragAttIndex = -1
+                                stopAutoScroll()
                                 true
                             }
                             else -> false
@@ -227,8 +296,9 @@ fun renderInlineContent(
                     }
 
                     binding.root.setOnLongClickListener { view ->
-                        val clipData = android.content.ClipData.newPlainText("attachment_index", index.toString())
+                        val clipData = android.content.ClipData.newPlainText("att_index", attachmentIndex.toString())
                         val shadow = View.DragShadowBuilder(view)
+                        startAutoScroll()
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
                             view.startDragAndDrop(clipData, shadow, null, 0)
                         } else {
