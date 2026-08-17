@@ -973,6 +973,13 @@ class EditorFragment : BaseFragment(R.layout.fragment_editor) {
                             }
                             model.reorderAttachments(newAttachments, newContent.trim())
                         },
+                        onAttachmentDropped = { sourcePath, targetPath ->
+                            val note = data.note ?: return@renderInlineContent
+                            val newContent = InlineContent.rearrangeMarkers(note.content, sourcePath, targetPath)
+                            if (newContent != note.content) {
+                                model.setNoteContent(newContent)
+                            }
+                        },
                     )
                 }
             } else {
@@ -1314,6 +1321,13 @@ class EditorFragment : BaseFragment(R.layout.fragment_editor) {
                             if (stripped.isBlank()) markers else markers + stripped
                         }
                         model.reorderAttachments(newAttachments, newContent.trim())
+                    },
+                    onAttachmentDropped = { sourcePath, targetPath ->
+                        val currentNote = data.note ?: return@renderInlineContent
+                        val newContent = InlineContent.rearrangeMarkers(currentNote.content, sourcePath, targetPath)
+                        if (newContent != currentNote.content) {
+                            model.setNoteContent(newContent)
+                        }
                     },
                 )
             }

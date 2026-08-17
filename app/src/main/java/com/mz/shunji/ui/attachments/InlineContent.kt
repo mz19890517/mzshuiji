@@ -121,7 +121,7 @@ object InlineContent {
  * Gesture support:
  * - Single tap: show attachment menu
  * - Double tap: open/preview attachment
- * - Long press + drag: reorder attachments
+ * - Long press + drag: reorder attachments (uses paths, not indices)
  */
 fun renderInlineContent(
     container: LinearLayout,
@@ -134,24 +134,13 @@ fun renderInlineContent(
     onAttachmentLongClick: ((Attachment) -> Boolean)? = null,
     onAttachmentMenuClick: ((Attachment) -> Unit)? = null,
     onAttachmentsReordered: ((List<Attachment>) -> Unit)? = null,
+    onAttachmentDropped: ((sourcePath: String, targetPath: String) -> Unit)? = null,
     isEditMode: Boolean = false,
 ) {
     container.removeAllViews()
 
     val segments = InlineContent.parse(note.content, note.attachments)
 
-    val segmentToAttIndex = mutableMapOf<Int, Int>()
-    var attCount = 0
-    segments.forEachIndexed { idx, seg ->
-        if (seg is InlineContent.Segment.AttachmentRef) {
-            segmentToAttIndex[idx] = attCount++
-            attCount
-        }
-    }
-
-    val contentAttachments = segments.filterIsInstance<InlineContent.Segment.AttachmentRef>().map { it.attachment }
-
-    var dragAttIndex = -1
     var lastDragScreenY = 0f
     val autoScrollHandler = Handler(Looper.getMainLooper())
     var isAutoScrolling = false
@@ -234,7 +223,7 @@ fun renderInlineContent(
                 bindInlineAttachment(binding, context, segment.attachment, maxAttachmentHeight)
 
                 if (!isEditMode) {
-                    val attachmentIndex = segmentToAttIndex[index] ?: -1
+                    val attPath = segment.attachment.path
 
                     val gestureDetector = GestureDetector(context, object : GestureDetector.SimpleOnGestureListener() {
                         override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
@@ -259,7 +248,6 @@ fun renderInlineContent(
                     binding.root.setOnDragListener { v, dragEvent ->
                         when (dragEvent.action) {
                             DragEvent.ACTION_DRAG_STARTED -> {
-                                dragAttIndex = dragEvent.clipData?.getItemAt(0)?.text?.toString()?.toIntOrNull() ?: -1
                                 v.alpha = 0.5f
                                 true
                             }
@@ -278,21 +266,15 @@ fun renderInlineContent(
                                 true
                             }
                             DragEvent.ACTION_DROP -> {
-                                val targetAttIndex = attachmentIndex
-                                if (dragAttIndex >= 0 && dragAttIndex != targetAttIndex && onAttachmentsReordered != null) {
-                                    if (dragAttIndex < contentAttachments.size && targetAttIndex < contentAttachments.size) {
-                                        val reordered = contentAttachments.toMutableList()
-                                        val item = reordered.removeAt(dragAttIndex)
-                                        reordered.add(targetAttIndex, item)
-                                        onAttachmentsReordered(reordered)
-                                    }
+                                val sourcePath = dragEvent.clipData?.getItemAt(0)?.text?.toString() ?: ""
+                                if (sourcePath.isNotEmpty() && sourcePath != attPath && onAttachmentDropped != null) {
+                                    onAttachmentDropped(sourcePath, attPath)
                                 }
                                 v.alpha = 1f
                                 true
                             }
                             DragEvent.ACTION_DRAG_ENDED -> {
                                 v.alpha = 1f
-                                dragAttIndex = -1
                                 stopAutoScroll()
                                 true
                             }
@@ -301,7 +283,7 @@ fun renderInlineContent(
                     }
 
                     binding.root.setOnLongClickListener { view ->
-                        val clipData = android.content.ClipData.newPlainText("att_index", attachmentIndex.toString())
+                        val clipData = android.content.ClipData.newPlainText("att_path", attPath)
                         val shadow = View.DragShadowBuilder(view)
                         startAutoScroll()
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
