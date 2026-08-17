@@ -145,6 +145,16 @@ class EditorViewModel(
         )
     }
 
+    fun deleteAttachmentWithContent(attachment: Attachment, newContent: String) = update { note ->
+        note.copy(
+            attachments = note.attachments
+                .filterNot { it.path == attachment.path }
+                .toMutableList(),
+            content = newContent,
+            modifiedDate = Instant.now().epochSecond,
+        )
+    }
+
     fun insertAttachments(vararg attachments: Attachment) = update { note ->
         note.copy(
             attachments = note.attachments + attachments,

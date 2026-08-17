@@ -58,7 +58,7 @@ android {
     }
 
     signingConfigs {
-        create("debug") {
+        getByName("debug") {
             storeFile = file("../mzshunji-debug.keystore")
             storePassword = "mzshunji123"
             keyAlias = "mzshunji"

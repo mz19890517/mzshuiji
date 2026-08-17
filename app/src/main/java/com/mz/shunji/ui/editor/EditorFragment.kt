@@ -1376,9 +1376,8 @@ class EditorFragment : BaseFragment(R.layout.fragment_editor) {
                 }
             }
             action(R.string.action_delete, R.drawable.ic_bin) {
-                model.deleteAttachment(attachment)
                 val newContent = note.content.replace(InlineContent.markerFor(attachment), "").trim()
-                model.setNoteContent(newContent)
+                model.deleteAttachmentWithContent(attachment, newContent)
             }
         }
     }
