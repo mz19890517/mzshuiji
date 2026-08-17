@@ -15,8 +15,8 @@ import android.print.PrintDocumentAdapter
 import android.print.PrintManager
 import android.view.View
 import android.widget.LinearLayout
-import android.widget.ScrollView
 import android.widget.TextView
+import androidx.core.widget.NestedScrollView
 import android.widget.Toast
 import com.mz.shunji.data.model.Note
 import java.io.File
@@ -96,17 +96,18 @@ object ExportUtils {
                 lines.add("")
                 continue
             }
+            val chars = paragraph.toCharArray()
             var start = 0
-            while (start < paragraph.length) {
-                val end = paint.breakText(paragraph, start, paragraph.length, maxWidth, null)
-                lines.add(paragraph.substring(start, start + end))
+            while (start < chars.size) {
+                val end = paint.breakText(chars, start, chars.size, maxWidth, null)
+                lines.add(String(chars, start, end))
                 start += end
             }
         }
         return lines
     }
 
-    fun createBitmapFromView(scrollView: ScrollView, scale: Float = 1f): Bitmap {
+    fun createBitmapFromView(scrollView: NestedScrollView, scale: Float = 1f): Bitmap {
         val totalHeight = scrollView.getChildAt(0).height
         val width = scrollView.width
 

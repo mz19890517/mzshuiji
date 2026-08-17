@@ -1620,7 +1620,7 @@ class EditorFragment : BaseFragment(R.layout.fragment_editor) {
                     isViewEditMode = isViewEdit,
                     onViewEditTap = {
                         model.editorMode = EditorViewModel.EditorMode.EDIT
-                        updateEditMode()
+                        binding.root.post { updateEditMode() }
                         requestFocusForFields(true)
                     },
                 )
