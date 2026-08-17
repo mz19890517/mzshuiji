@@ -16,6 +16,7 @@ import com.mz.shunji.R
 import com.mz.shunji.data.model.Attachment
 import com.mz.shunji.ui.BaseActivity
 import com.mz.shunji.ui.attachments.getAttachmentUri
+import com.mz.shunji.ui.attachments.getHtmlBaseDir
 
 class HtmlPreviewActivity : BaseActivity() {
     private var webView: WebView? = null
@@ -71,7 +72,6 @@ class HtmlPreviewActivity : BaseActivity() {
     @SuppressLint("SetJavaScriptEnabled")
     private fun setupWebView(attachment: Attachment) {
         val wv = webView ?: return
-        val uri = getAttachmentUri(this, attachment.path) ?: return finish()
 
         wv.settings.apply {
             javaScriptEnabled = true
@@ -86,8 +86,51 @@ class HtmlPreviewActivity : BaseActivity() {
             displayZoomControls = false
         }
 
-        wv.webViewClient = WebViewClient()
-        wv.loadUrl(uri.toString())
+        wv.webViewClient = object : WebViewClient() {
+            override fun onReceivedError(view: WebView?, errorCode: Int, description: String?, failingUrl: String?) {
+                view?.loadDataWithBaseURL(null,
+                    "<html><body style='padding:16px;font-family:sans-serif;'>" +
+                    "<h3>加载失败</h3><p>${description ?: "无法加载此 HTML 文件"}</p>" +
+                    "<p>文件路径: ${attachment.path}</p>" +
+                    "</body></html>",
+                    "text/html", "UTF-8", null)
+            }
+        }
+
+        // Resolve the actual file path for loadDataWithBaseURL so relative paths (JS/CSS) work
+        val htmlFile = java.io.File(getHtmlBaseDir(this), attachment.path)
+        if (!htmlFile.exists()) {
+            // Fallback: try via attachment URI
+            val uri = getAttachmentUri(this, attachment.path)
+            if (uri != null) {
+                wv.loadUrl(uri.toString())
+            } else {
+                wv.loadDataWithBaseURL(null,
+                    "<html><body style='padding:16px;font-family:sans-serif;'>" +
+                    "<h3>文件未找到</h3><p>${attachment.path}</p>" +
+                    "</body></html>",
+                    "text/html", "UTF-8", null)
+            }
+            return
+        }
+
+        val htmlContent = try {
+            htmlFile.readText(Charsets.UTF_8)
+        } catch (_: Exception) {
+            null
+        }
+
+        if (htmlContent != null) {
+            // Use file:// base URL so relative paths to JS/CSS/images resolve correctly
+            val baseUrl = "file://${htmlFile.parentFile?.absolutePath ?: htmlFile.absolutePath}/"
+            wv.loadDataWithBaseURL(baseUrl, htmlContent, "text/html", "UTF-8", null)
+        } else {
+            wv.loadDataWithBaseURL(null,
+                "<html><body style='padding:16px;font-family:sans-serif;'>" +
+                "<h3>读取失败</h3><p>无法读取文件内容</p>" +
+                "</body></html>",
+                "text/html", "UTF-8", null)
+        }
     }
 
     override fun onDestroy() {

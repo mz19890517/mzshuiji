@@ -31,7 +31,8 @@ object ExportUtils {
         return try {
             val title = note.title.ifEmpty { "未命名笔记" }
             val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
-            val fileName = "${title}_${timestamp}.pdf"
+            val safeTitle = title.replace(Regex("[^\\w\\u4e00-\\u9fff\\-]"), "_")
+            val fileName = "${safeTitle}_${timestamp}.pdf"
 
             val document = PdfDocument()
             val pageInfo = PdfDocument.PageInfo.Builder(595, 842, 1).create() // A4 size
@@ -126,7 +127,13 @@ object ExportUtils {
             canvas.drawColor(Color.WHITE)
         }
 
-        scrollView.draw(canvas)
+        val prevLayerType = scrollView.layerType
+        scrollView.setLayerType(View.LAYER_TYPE_SOFTWARE, null)
+        try {
+            scrollView.draw(canvas)
+        } finally {
+            scrollView.setLayerType(prevLayerType, null)
+        }
         return bitmap
     }
 
@@ -161,6 +168,7 @@ object ExportUtils {
     fun generateScreenshotFileName(note: Note): String {
         val title = note.title.ifEmpty { "未命名笔记" }
         val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
-        return "${title}_${timestamp}.png"
+        val safeTitle = title.replace(Regex("[^\\w\\u4e00-\\u9fff\\-]"), "_")
+        return "${safeTitle}_${timestamp}.png"
     }
 }

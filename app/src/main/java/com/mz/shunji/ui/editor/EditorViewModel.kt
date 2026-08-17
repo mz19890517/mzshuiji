@@ -53,9 +53,16 @@ class EditorViewModel(
 
     fun cycleMode() {
         editorMode = when (editorMode) {
-            EditorMode.READ -> EditorMode.VIEW_EDIT
-            EditorMode.VIEW_EDIT -> EditorMode.EDIT
+            EditorMode.READ -> EditorMode.EDIT
             EditorMode.EDIT -> EditorMode.READ
+            EditorMode.VIEW_EDIT -> EditorMode.READ
+        }
+    }
+
+    fun toggleViewEdit() {
+        editorMode = when (editorMode) {
+            EditorMode.VIEW_EDIT -> EditorMode.READ
+            else -> EditorMode.VIEW_EDIT
         }
     }
 

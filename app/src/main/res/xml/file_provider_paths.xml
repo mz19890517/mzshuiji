@@ -5,4 +5,10 @@
     <files-path
             name="test_media_files"
             path="test_media/"/>
+    <files-path
+            name="html_files"
+            path="html/"/>
+    <cache-path
+            name="cache_files"
+            path="/"/>
 </paths>

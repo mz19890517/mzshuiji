@@ -364,6 +364,17 @@ class EditorFragment : BaseFragment(R.layout.fragment_editor) {
                 view.hideKeyboard()
             }
         }
+
+        binding.fabChangeMode.setOnLongClickListener {
+            model.toggleViewEdit()
+            updateEditMode()
+            if (model.editorMode == EditorViewModel.EditorMode.VIEW_EDIT) {
+                view.hideKeyboard()
+            } else {
+                requestFocusForFields(true)
+            }
+            true
+        }
     }
 
     @Deprecated("Deprecated in Java")
@@ -591,7 +602,8 @@ class EditorFragment : BaseFragment(R.layout.fragment_editor) {
     private fun setMarkdownToolbarVisibility(note: Note? = data.note) = with(binding) {
         if (note == null) return@with
 
-        containerBottomToolbar.isVisible = !isList && note.isMarkdownEnabled && model.editorMode != EditorViewModel.EditorMode.READ && contentHasFocus
+        val isViewEditMode = model.editorMode == EditorViewModel.EditorMode.VIEW_EDIT
+        containerBottomToolbar.isVisible = !isList && note.isMarkdownEnabled && model.editorMode != EditorViewModel.EditorMode.READ && (contentHasFocus || isViewEditMode)
 
         scrollView.updateLayoutParams<ConstraintLayout.LayoutParams> {
             val actionBarSize = requireContext().getDimensionAttribute(R.attr.actionBarSize) ?: 0
@@ -1323,22 +1335,30 @@ class EditorFragment : BaseFragment(R.layout.fragment_editor) {
             val file = with(kotlinx.coroutines.Dispatchers.IO) {
                 ExportUtils.generatePdfDirect(requireContext(), note)
             }
-            if (file != null) {
-                val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
-                    setDataAndType(
-                        androidx.core.content.FileProvider.getUriForFile(
-                            requireContext(),
-                            "${requireContext().packageName}.provider",
-                            file
-                        ),
-                        "application/pdf"
-                    )
+            if (file != null && file.exists() && file.length() > 0) {
+                val uri = androidx.core.content.FileProvider.getUriForFile(
+                    requireContext(),
+                    "${requireContext().packageName}.provider",
+                    file
+                )
+                // Try ACTION_VIEW first, fallback to ACTION_SEND
+                val viewIntent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+                    setDataAndType(uri, "application/pdf")
+                    addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                val sendIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                    putExtra(android.content.Intent.EXTRA_STREAM, uri)
+                    type = "application/pdf"
                     addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 }
                 try {
-                    startActivity(intent)
+                    startActivity(viewIntent)
                 } catch (_: Exception) {
-                    Toast.makeText(requireContext(), "没有可打开 PDF 的应用", Toast.LENGTH_SHORT).show()
+                    try {
+                        startActivity(android.content.Intent.createChooser(sendIntent, "分享 PDF"))
+                    } catch (_: Exception) {
+                        Toast.makeText(requireContext(), "没有可打开 PDF 的应用", Toast.LENGTH_SHORT).show()
+                    }
                 }
             } else {
                 Toast.makeText(requireContext(), "PDF 导出失败", Toast.LENGTH_SHORT).show()
@@ -1496,6 +1516,14 @@ class EditorFragment : BaseFragment(R.layout.fragment_editor) {
             EditorViewModel.EditorMode.VIEW_EDIT -> R.drawable.ic_show
             EditorViewModel.EditorMode.EDIT -> R.drawable.ic_edit_view
         })
+
+        // Hide floating tool button in READ mode
+        if (isRead) {
+            fabTools.isVisible = false
+            if (isToolsExpanded) collapseToolOptions()
+        } else {
+            fabTools.isVisible = data.showFabChangeMode && !isNoteDeleted
+        }
         setMarkdownToolbarVisibility(note)
 
         // Re-render inline content when switching to read or view-edit mode
