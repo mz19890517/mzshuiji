@@ -1508,34 +1508,40 @@ class EditorFragment : BaseFragment(R.layout.fragment_editor) {
 
     private fun renderCurrentInlineContent(note: Note) = with(binding) {
         val isViewEdit = model.editorMode == EditorViewModel.EditorMode.VIEW_EDIT
+        val attachmentClick: (Attachment) -> Unit = { attachment -> onInlineAttachmentClick(attachment) }
+        val menuClick: (Attachment) -> Unit = { attachment -> showInlineAttachmentMenu(attachment) }
+        val longClick: (Attachment) -> Boolean = { true }
+        val reordered: (List<Attachment>) -> Unit = { newAttachments ->
+            val markers = newAttachments.joinToString("") { InlineContent.markerFor(it) }
+            val newContent = InlineContent.stripMarkers(note.content).let { stripped ->
+                if (stripped.isBlank()) markers else markers + stripped
+            }
+            model.reorderAttachments(newAttachments, newContent.trim())
+        }
+        val dropped: (String, String, Boolean) -> Unit = { sourcePath, targetPath, insertBefore ->
+            val newContent = InlineContent.rearrangeMarkers(note.content, sourcePath, targetPath, insertBefore)
+            if (newContent != note.content) {
+                model.setNoteContent(newContent)
+            }
+        }
+        val viewEditTap: () -> Unit = {
+            model.editorMode = EditorViewModel.EditorMode.EDIT
+            updateEditMode()
+            requestFocusForFields(true)
+        }
         renderInlineContent(
             containerContentPreviewInline,
             requireContext(),
             note,
             markwon,
             textSize = data.editorFontSize.takeIf { it != -1 }?.toFloat(),
-            onAttachmentClick = { attachment -> onInlineAttachmentClick(attachment) },
-            onAttachmentMenuClick = { attachment -> showInlineAttachmentMenu(attachment) },
-            onAttachmentLongClick = { true },
-            onAttachmentsReordered = { newAttachments ->
-                val markers = newAttachments.joinToString("") { InlineContent.markerFor(it) }
-                val newContent = InlineContent.stripMarkers(note.content).let { stripped ->
-                    if (stripped.isBlank()) markers else markers + stripped
-                }
-                model.reorderAttachments(newAttachments, newContent.trim())
-            },
-            onAttachmentDropped = { sourcePath, targetPath, insertBefore ->
-                val newContent = InlineContent.rearrangeMarkers(note.content, sourcePath, targetPath, insertBefore)
-                if (newContent != note.content) {
-                    model.setNoteContent(newContent)
-                }
-            },
+            onAttachmentClick = attachmentClick,
+            onAttachmentMenuClick = menuClick,
+            onAttachmentLongClick = longClick,
+            onAttachmentsReordered = reordered,
+            onAttachmentDropped = dropped,
             isViewEditMode = isViewEdit,
-            onViewEditTap = Runnable {
-                model.editorMode = EditorViewModel.EditorMode.EDIT
-                updateEditMode()
-                requestFocusForFields(true)
-            } as (() -> Unit)?,
+            onViewEditTap = viewEditTap,
         )
     }
 
