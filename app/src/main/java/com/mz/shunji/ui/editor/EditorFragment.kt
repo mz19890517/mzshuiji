@@ -22,6 +22,7 @@ import android.view.View
 import android.view.WindowManager
 import android.view.inputmethod.EditorInfo
 import android.widget.TextView
+import android.widget.Toast
 import androidx.activity.addCallback
 import androidx.annotation.ColorInt
 import androidx.appcompat.widget.Toolbar
@@ -953,11 +954,28 @@ class EditorFragment : BaseFragment(R.layout.fragment_editor) {
                         markwon,
                         textSize = data.editorFontSize.takeIf { it != -1 }?.toFloat(),
                         onAttachmentClick = { attachment ->
-                            startActivity(
-                                Intent(requireContext(), MediaActivity::class.java).apply {
-                                    putExtra(MediaActivity.ATTACHMENT, attachment)
+                            when (attachment.type) {
+                                Attachment.Type.GENERIC -> {
+                                    val uri = attachment.uri(requireContext()) ?: return@renderInlineContent
+                                    val mimeType = requireContext().contentResolver.getType(uri)
+                                    val intent = Intent(Intent.ACTION_VIEW).apply {
+                                        setDataAndType(uri, mimeType ?: "*/*")
+                                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                    }
+                                    try {
+                                        startActivity(intent)
+                                    } catch (_: Exception) {
+                                        Toast.makeText(requireContext(), "没有可打开此文件的应用", Toast.LENGTH_SHORT).show()
+                                    }
                                 }
-                            )
+                                else -> {
+                                    startActivity(
+                                        Intent(requireContext(), MediaActivity::class.java).apply {
+                                            putExtra(MediaActivity.ATTACHMENT, attachment)
+                                        }
+                                    )
+                                }
+                            }
                         },
                         onAttachmentMenuClick = { attachment ->
                             showInlineAttachmentMenu(attachment)
@@ -1302,11 +1320,28 @@ class EditorFragment : BaseFragment(R.layout.fragment_editor) {
                     markwon,
                     textSize = data.editorFontSize.takeIf { it != -1 }?.toFloat(),
                     onAttachmentClick = { attachment ->
-                        startActivity(
-                            Intent(requireContext(), MediaActivity::class.java).apply {
-                                putExtra(MediaActivity.ATTACHMENT, attachment)
+                        when (attachment.type) {
+                            Attachment.Type.GENERIC -> {
+                                val uri = attachment.uri(requireContext()) ?: return@renderInlineContent
+                                val mimeType = requireContext().contentResolver.getType(uri)
+                                val intent = Intent(Intent.ACTION_VIEW).apply {
+                                    setDataAndType(uri, mimeType ?: "*/*")
+                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                }
+                                try {
+                                    startActivity(intent)
+                                } catch (_: Exception) {
+                                    Toast.makeText(requireContext(), "没有可打开此文件的应用", Toast.LENGTH_SHORT).show()
+                                }
                             }
-                        )
+                            else -> {
+                                startActivity(
+                                    Intent(requireContext(), MediaActivity::class.java).apply {
+                                        putExtra(MediaActivity.ATTACHMENT, attachment)
+                                    }
+                                )
+                            }
+                        }
                     },
                     onAttachmentMenuClick = { attachment ->
                         showInlineAttachmentMenu(attachment)

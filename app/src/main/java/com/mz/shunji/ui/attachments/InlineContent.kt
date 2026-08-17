@@ -9,6 +9,8 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.view.DragEvent
+import android.view.GestureDetector
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.ViewParent
@@ -56,27 +58,18 @@ object InlineContent {
     fun stripMarkers(content: String): String = content.replace(regex, "")
 
     fun rearrangeMarkers(content: String, sourcePath: String, targetPath: String, insertBefore: Boolean): String {
-        val allMarkers = regex.findAll(content).map { it.value }.toList()
         val sourceMarker = "$PREFIX$sourcePath$SUFFIX"
         val targetMarker = "$PREFIX$targetPath$SUFFIX"
-        val sourceIdx = allMarkers.indexOf(sourceMarker)
-        val targetIdx = allMarkers.indexOf(targetMarker)
+        val sourceIdx = content.indexOf(sourceMarker)
+        val targetIdx = content.indexOf(targetMarker)
         if (sourceIdx < 0 || targetIdx < 0 || sourceIdx == targetIdx) return content
 
-        val reordered = allMarkers.toMutableList()
-        val item = reordered.removeAt(sourceIdx)
-        val insertIdx = if (insertBefore) {
-            if (sourceIdx < targetIdx) targetIdx - 1 else targetIdx
-        } else {
-            if (sourceIdx < targetIdx) targetIdx else targetIdx + 1
-        }
-        reordered.add(insertIdx.coerceIn(0, reordered.size), item)
+        val noSource = content.removeRange(sourceIdx, sourceIdx + sourceMarker.length)
+        val newTargetIdx = noSource.indexOf(targetMarker)
+        if (newTargetIdx < 0) return content
 
-        var result = content
-        for ((i, marker) in allMarkers.withIndex()) {
-            result = result.replaceFirst(marker, reordered[i])
-        }
-        return result
+        val insertPos = if (insertBefore) newTargetIdx else newTargetIdx + targetMarker.length
+        return noSource.substring(0, insertPos) + sourceMarker + noSource.substring(insertPos)
     }
 
     fun insertMarkersAt(content: String, markers: String, atBeginning: Boolean): String {
@@ -227,8 +220,33 @@ fun renderInlineContent(
 
                 if (!isEditMode) {
                     val attPath = segment.attachment.path
+                    val handler = Handler(Looper.getMainLooper())
+                    var pendingRunnable: Runnable? = null
+
+                    val gestureDetector = GestureDetector(context, object : GestureDetector.SimpleOnGestureListener() {
+                        override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
+                            pendingRunnable?.let { handler.removeCallbacks(it) }
+                            pendingRunnable = Runnable { onAttachmentMenuClick?.invoke(segment.attachment) }
+                            handler.postDelayed(pendingRunnable!!, 250L)
+                            return true
+                        }
+
+                        override fun onDoubleTap(e: MotionEvent): Boolean {
+                            pendingRunnable?.let { handler.removeCallbacks(it) }
+                            pendingRunnable = null
+                            onAttachmentClick?.invoke(segment.attachment)
+                            return true
+                        }
+                    })
+
+                    binding.root.setOnTouchListener { view, event ->
+                        gestureDetector.onTouchEvent(event)
+                        false
+                    }
 
                     binding.root.setOnLongClickListener { view ->
+                        pendingRunnable?.let { handler.removeCallbacks(it) }
+                        pendingRunnable = null
                         Toast.makeText(context, "拖动中，拖到目标位置释放", Toast.LENGTH_SHORT).show()
                         val clipData = android.content.ClipData.newPlainText("att_path", attPath)
                         val shadow = View.DragShadowBuilder(view)
