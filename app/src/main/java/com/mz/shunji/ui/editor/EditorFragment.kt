@@ -1531,11 +1531,11 @@ class EditorFragment : BaseFragment(R.layout.fragment_editor) {
                 }
             },
             isViewEditMode = isViewEdit,
-            onViewEditTap = {
+            onViewEditTap = Runnable {
                 model.editorMode = EditorViewModel.EditorMode.EDIT
                 updateEditMode()
                 requestFocusForFields(true)
-            },
+            } as (() -> Unit)?,
         )
     }
 
