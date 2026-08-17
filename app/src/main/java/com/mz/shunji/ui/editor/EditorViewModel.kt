@@ -31,6 +31,7 @@ import com.mz.shunji.preferences.PreferenceRepository
 import com.mz.shunji.preferences.ShowDate
 import com.mz.shunji.preferences.ShowFabChangeMode
 import com.mz.shunji.preferences.TimeFormat
+import com.mz.shunji.ui.attachments.InlineContent
 import java.time.Instant
 
 class EditorViewModel(
@@ -88,10 +89,17 @@ class EditorViewModel(
             val id = withContext(Dispatchers.IO) {
                 if (noteId > 0L) return@withContext noteId
 
+                val markerContent = if (newNoteAttachments.isNotEmpty() && !newNoteIsList) {
+                    val markers = newNoteAttachments.joinToString("") { InlineContent.markerFor(it) }
+                    (newNoteContent + markers).trim()
+                } else {
+                    newNoteContent
+                }
+
                 noteRepository.insertNote(
                     Note(
                         title = newNoteTitle,
-                        content = newNoteContent,
+                        content = markerContent,
                         notebookId = newNoteNotebookId,
                         isList = newNoteIsList,
                         attachments = newNoteAttachments,
