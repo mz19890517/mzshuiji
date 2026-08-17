@@ -971,7 +971,7 @@ class EditorFragment : BaseFragment(R.layout.fragment_editor) {
                             val newContent = InlineContent.stripMarkers(note.content).let { stripped ->
                                 if (stripped.isBlank()) markers else markers + stripped
                             }
-                            model.insertAttachmentsWithContent(newAttachments, newContent.trim())
+                            model.reorderAttachments(newAttachments, newContent.trim())
                         },
                     )
                 }
@@ -1313,7 +1313,7 @@ class EditorFragment : BaseFragment(R.layout.fragment_editor) {
                         val newContent = InlineContent.stripMarkers(currentNote.content).let { stripped ->
                             if (stripped.isBlank()) markers else markers + stripped
                         }
-                        model.insertAttachmentsWithContent(newAttachments, newContent.trim())
+                        model.reorderAttachments(newAttachments, newContent.trim())
                     },
                 )
             }

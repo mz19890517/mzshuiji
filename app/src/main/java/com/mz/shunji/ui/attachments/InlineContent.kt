@@ -322,7 +322,7 @@ fun renderInlineContent(
                 }
 
                 val heightDp = when (segment.attachment.type) {
-                    Attachment.Type.AUDIO -> 40
+                    Attachment.Type.AUDIO -> 60
                     Attachment.Type.GENERIC -> 36
                     else -> maxAttachmentHeight
                 }
@@ -372,6 +372,10 @@ private fun bindInlineAttachment(
             var mediaPlayer: MediaPlayer? = null
             var isPlaying = false
 
+            val wrapper = LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+            }
+
             val bar = LinearLayout(context).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = android.view.Gravity.CENTER_VERTICAL
@@ -394,6 +398,19 @@ private fun bindInlineAttachment(
                 max = 100
             }
             bar.addView(seekBar)
+
+            wrapper.addView(bar, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+
+            val fileNameText = attachment.description.ifEmpty { attachment.fileName }
+            val labelView = TextView(context).apply {
+                text = fileNameText
+                setTextColor(Color.parseColor("#666666"))
+                textSize = 12f
+                maxLines = 1
+                ellipsize = android.text.TextUtils.TruncateAt.END
+                setPadding(8.dp(context), 4.dp(context), 8.dp(context), 0)
+            }
+            wrapper.addView(labelView, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
 
             playBtn.setOnClickListener {
                 val uri = attachment.uri(context) ?: return@setOnClickListener
@@ -444,7 +461,7 @@ private fun bindInlineAttachment(
                 override fun onStopTrackingTouch(sb: SeekBar?) {}
             })
 
-            container.addView(bar, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+            container.addView(wrapper, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         }
 
         Attachment.Type.GENERIC -> {
