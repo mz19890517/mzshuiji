@@ -57,8 +57,15 @@ android {
         includeInBundle = false
     }
 
-    if (project.hasProperty("keystore")) {
-        signingConfigs {
+    signingConfigs {
+        create("debug") {
+            storeFile = file("../mzshunji-debug.keystore")
+            storePassword = "mzshunji123"
+            keyAlias = "mzshunji"
+            keyPassword = "mzshunji123"
+        }
+
+        if (project.hasProperty("keystore")) {
             create("release") {
                 val keystoreFileArg = project.property("keystore").toString()
                 val storePassArg = project.property("storepass").toString()
@@ -76,6 +83,7 @@ android {
         val testLabBuild = project.findProperty("TESTLAB_BUILD")?.toString() ?: "false"
 
         debug {
+            signingConfig = signingConfigs.getByName("debug")
             buildConfigField("boolean", "TESTLAB_BUILD", testLabBuild)
         }
         release {

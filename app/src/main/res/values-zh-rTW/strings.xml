@@ -134,6 +134,8 @@
     <string name="action_share">分享</string>
     <string name="action_pin_unpin">置頂 / 取消置頂</string>
     <string name="action_move_to">移動到…</string>
+    <string name="action_move_up">上移</string>
+    <string name="action_move_down">下移</string>
     <string name="action_duplicate">製作副本</string>
     <string name="action_select_more">選擇更多…</string>
     <string name="action_compact_preview">精簡預覽</string>

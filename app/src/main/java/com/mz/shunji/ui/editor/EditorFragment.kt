@@ -953,6 +953,10 @@ class EditorFragment : BaseFragment(R.layout.fragment_editor) {
                                 }
                             )
                         },
+                        onAttachmentLongClick = { attachment ->
+                            showInlineAttachmentMenu(attachment)
+                            true
+                        },
                     )
                 }
             } else {
@@ -1281,6 +1285,10 @@ class EditorFragment : BaseFragment(R.layout.fragment_editor) {
                             }
                         )
                     },
+                    onAttachmentLongClick = { attachment ->
+                        showInlineAttachmentMenu(attachment)
+                        true
+                    },
                 )
             }
         }
@@ -1339,6 +1347,46 @@ class EditorFragment : BaseFragment(R.layout.fragment_editor) {
         } else {
             model.insertAttachments(*attachments.toTypedArray())
         }
+    }
+
+    private fun showInlineAttachmentMenu(attachment: Attachment) {
+        val note = data.note ?: return
+        val noteId = note.id ?: return
+
+        val attachments = note.attachments
+        val idx = attachments.indexOfFirst { it.path == attachment.path }
+        val hasPrev = idx > 0
+        val hasNext = idx in 0 until attachments.size - 1
+
+        BottomSheet.show(attachment.description.ifEmpty { attachment.fileName }, parentFragmentManager) {
+            action(R.string.attachments_edit_description, R.drawable.ic_pencil) {
+                EditAttachmentDialog.build(noteId, attachment.path).show(parentFragmentManager, null)
+            }
+            action(R.string.action_share, R.drawable.ic_share) {
+                shareAttachment(requireContext(), attachment)
+            }
+            if (hasPrev) {
+                action(R.string.action_move_up, R.drawable.ic_up) {
+                    moveInlineAttachment(attachment, attachments[idx - 1])
+                }
+            }
+            if (hasNext) {
+                action(R.string.action_move_down, R.drawable.ic_down) {
+                    moveInlineAttachment(attachment, attachments[idx + 1])
+                }
+            }
+            action(R.string.action_delete, R.drawable.ic_bin) {
+                model.deleteAttachment(attachment)
+                val newContent = note.content.replace(InlineContent.markerFor(attachment), "").trim()
+                model.setNoteContent(newContent)
+            }
+        }
+    }
+
+    private fun moveInlineAttachment(attachment: Attachment, swapWith: Attachment) {
+        val note = data.note ?: return
+        val newContent = InlineContent.rearrangeMarkers(note.content, attachment.path, swapWith.path)
+        model.setNoteContent(newContent)
     }
 
     companion object {

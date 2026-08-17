@@ -18,6 +18,7 @@ import com.mz.shunji.data.model.Note
 import com.mz.shunji.data.model.NoteColor
 import com.mz.shunji.data.model.Tag
 import com.mz.shunji.databinding.LayoutNoteBinding
+import com.mz.shunji.ui.attachments.InlineContent
 import com.mz.shunji.ui.attachments.recycler.AttachmentViewHolder
 import com.mz.shunji.ui.attachments.recycler.AttachmentsAdapter
 import com.mz.shunji.ui.attachments.recycler.AttachmentsPreviewGridManager
@@ -115,15 +116,16 @@ class NoteViewHolder(
     }
 
     private fun setTextContent(note: Note) = with(binding) {
-        val showContent = !note.isList && note.content.isNotEmpty() && !note.isCompactPreview
+        val strippedContent = if (note.isInlineMode) InlineContent.stripMarkers(note.content) else note.content
+        val showContent = !note.isList && strippedContent.isNotBlank() && !note.isCompactPreview
         textViewContent.isVisible = showContent
 
         if (showContent) {
             textViewContent.ellipsize()
 
-            if (note.isMarkdownEnabled && note.content.isNotBlank()) {
+            if (note.isMarkdownEnabled && strippedContent.isNotBlank()) {
                 try {
-                    markwon.applyTo(textViewContent, note.content) {
+                    markwon.applyTo(textViewContent, strippedContent) {
                         maximumTableColumns = 4
                         tableReplacement = { Code(context.getString(R.string.message_cannot_preview_table)) }
                     }
@@ -131,7 +133,7 @@ class NoteViewHolder(
                     textViewContent.text = ""
                 }
             } else {
-                textViewContent.text = note.content
+                textViewContent.text = strippedContent
             }
         }
     }

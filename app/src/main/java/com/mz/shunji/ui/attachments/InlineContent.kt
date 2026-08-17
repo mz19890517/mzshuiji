@@ -40,6 +40,25 @@ object InlineContent {
 
     fun stripMarkers(content: String): String = content.replace(regex, "")
 
+    fun rearrangeMarkers(content: String, fromPath: String, toPath: String): String {
+        val allMarkers = regex.findAll(content).map { it.value }.toList()
+        val fromMarker = "$PREFIX$fromPath$SUFFIX"
+        val toMarker = "$PREFIX$toPath$SUFFIX"
+        val fromIdx = allMarkers.indexOf(fromMarker)
+        val toIdx = allMarkers.indexOf(toMarker)
+        if (fromIdx < 0 || toIdx < 0 || fromIdx == toIdx) return content
+
+        val reordered = allMarkers.toMutableList()
+        reordered.removeAt(fromIdx)
+        reordered.add(toIdx, fromMarker)
+
+        var result = content
+        for ((i, marker) in allMarkers.withIndex()) {
+            result = result.replaceFirst(marker, reordered[i])
+        }
+        return result
+    }
+
     sealed class Segment {
         data class Text(val text: String) : Segment()
         data class AttachmentRef(val attachment: Attachment) : Segment()
@@ -83,6 +102,7 @@ fun renderInlineContent(
     textSize: Float? = null,
     maxAttachmentHeight: Int = 220,
     onAttachmentClick: ((Attachment) -> Unit)? = null,
+    onAttachmentLongClick: ((Attachment) -> Boolean)? = null,
 ) {
     container.removeAllViews()
 
@@ -118,6 +138,9 @@ fun renderInlineContent(
                 bindInlineAttachment(binding, context, segment.attachment, maxAttachmentHeight)
                 if (onAttachmentClick != null) {
                     binding.root.setOnClickListener { onAttachmentClick(segment.attachment) }
+                }
+                if (onAttachmentLongClick != null) {
+                    binding.root.setOnLongClickListener { onAttachmentLongClick(segment.attachment) }
                 }
                 container.addView(
                     binding.root,

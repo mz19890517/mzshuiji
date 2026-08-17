@@ -177,6 +177,8 @@
     <string name="action_share">Share</string>
     <string name="action_pin_unpin">Pin / Unpin</string>
     <string name="action_move_to">Move to…</string>
+    <string name="action_move_up">Move up</string>
+    <string name="action_move_down">Move down</string>
     <string name="action_duplicate">Duplicate</string>
     <string name="action_select_more">Select more…</string>
     <string name="action_compact_preview">Compact preview</string>
