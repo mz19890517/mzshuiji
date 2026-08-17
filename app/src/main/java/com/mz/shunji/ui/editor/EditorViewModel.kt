@@ -152,6 +152,14 @@ class EditorViewModel(
         )
     }
 
+    fun insertAttachmentsWithContent(attachments: List<Attachment>, newContent: String) = update { note ->
+        note.copy(
+            attachments = note.attachments + attachments,
+            content = newContent,
+            modifiedDate = Instant.now().epochSecond,
+        )
+    }
+
     fun updateTaskList(list: List<NoteTask>) = update { note ->
         note.copy(
             taskList = list,

@@ -1329,15 +1329,15 @@ class EditorFragment : BaseFragment(R.layout.fragment_editor) {
     private fun insertAttachmentsInline(attachments: List<Attachment>) {
         val note = data.note ?: return
 
-        model.insertAttachments(*attachments.toTypedArray())
-
         if (note.isInlineMode && !note.isList) {
             val markers = attachments.joinToString("") { InlineContent.markerFor(it) }
             val newContent = (note.content + markers).trim()
-            model.setNoteContent(newContent)
+            model.insertAttachmentsWithContent(attachments, newContent)
             binding.editTextContent.withOnlyTextWatcher<MarkwonEditorTextWatcher> {
                 setText(newContent)
             }
+        } else {
+            model.insertAttachments(*attachments.toTypedArray())
         }
     }
 
