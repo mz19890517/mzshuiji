@@ -192,7 +192,7 @@ fun renderInlineContent(
                     binding.root.setOnDragListener { v, dragEvent ->
                         when (dragEvent.action) {
                             DragEvent.ACTION_DRAG_STARTED -> {
-                                dragIndex = dragEvent.clipData.getItemAt(0).text.toString().toIntOrNull() ?: -1
+                                dragIndex = dragEvent.clipData?.getItemAt(0)?.text?.toString()?.toIntOrNull() ?: -1
                                 v.alpha = 0.5f
                                 true
                             }
