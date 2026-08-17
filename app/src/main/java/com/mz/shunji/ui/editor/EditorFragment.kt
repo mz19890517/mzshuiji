@@ -1424,7 +1424,7 @@ class EditorFragment : BaseFragment(R.layout.fragment_editor) {
 
     private fun moveInlineAttachment(attachment: Attachment, swapWith: Attachment) {
         val note = data.note ?: return
-        val newContent = InlineContent.rearrangeMarkers(note.content, attachment.path, swapWith.path)
+        val newContent = InlineContent.rearrangeMarkers(note.content, attachment.path, swapWith.path, true)
         model.setNoteContent(newContent)
     }
 
