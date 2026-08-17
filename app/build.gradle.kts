@@ -12,7 +12,7 @@ plugins {
 
 android {
     compileSdk = 35
-    namespace = "org.qosp.notes"
+    namespace = "com.mz.shunji"
 
     defaultConfig {
         applicationId = "com.mz.shunji"
@@ -21,7 +21,7 @@ android {
         versionCode = 1
         versionName = "1.1.0"
 
-        testInstrumentationRunner = "org.qosp.notes.TestRunner"
+        testInstrumentationRunner = "com.mz.shunji.TestRunner"
 
         // Enable per-app language preferences
         androidResources {
