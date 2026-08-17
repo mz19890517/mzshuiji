@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
+import android.media.MediaPlayer
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
@@ -15,6 +16,7 @@ import android.view.ViewGroup
 import android.view.ViewParent
 import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
@@ -143,8 +145,11 @@ fun renderInlineContent(
     segments.forEachIndexed { idx, seg ->
         if (seg is InlineContent.Segment.AttachmentRef) {
             segmentToAttIndex[idx] = attCount++
+            attCount
         }
     }
+
+    val contentAttachments = segments.filterIsInstance<InlineContent.Segment.AttachmentRef>().map { it.attachment }
 
     var dragAttIndex = -1
     var lastDragScreenY = 0f
@@ -164,8 +169,8 @@ fun renderInlineContent(
         override fun run() {
             val sv = findNestedScrollView() ?: return
             val screenHeight = sv.height
-            val edgeZone = (120 * context.resources.displayMetrics.density).toInt()
-            val maxSpeed = (30 * context.resources.displayMetrics.density).toInt()
+            val edgeZone = (200 * context.resources.displayMetrics.density).toInt()
+            val maxSpeed = (60 * context.resources.displayMetrics.density).toInt()
 
             val scrollAmount = when {
                 lastDragScreenY < edgeZone && lastDragScreenY > 0 -> {
@@ -182,7 +187,7 @@ fun renderInlineContent(
             if (scrollAmount != 0) {
                 sv.smoothScrollBy(0, scrollAmount)
             }
-            autoScrollHandler.postDelayed(this, 40L)
+            autoScrollHandler.postDelayed(this, 30L)
         }
     }
 
@@ -275,11 +280,11 @@ fun renderInlineContent(
                             DragEvent.ACTION_DROP -> {
                                 val targetAttIndex = attachmentIndex
                                 if (dragAttIndex >= 0 && dragAttIndex != targetAttIndex && onAttachmentsReordered != null) {
-                                    val attachments = note.attachments.toMutableList()
-                                    if (dragAttIndex < attachments.size && targetAttIndex < attachments.size) {
-                                        val item = attachments.removeAt(dragAttIndex)
-                                        attachments.add(targetAttIndex, item)
-                                        onAttachmentsReordered(attachments)
+                                    if (dragAttIndex < contentAttachments.size && targetAttIndex < contentAttachments.size) {
+                                        val reordered = contentAttachments.toMutableList()
+                                        val item = reordered.removeAt(dragAttIndex)
+                                        reordered.add(targetAttIndex, item)
+                                        onAttachmentsReordered(reordered)
                                     }
                                 }
                                 v.alpha = 1f
@@ -317,18 +322,17 @@ fun renderInlineContent(
                 }
 
                 val heightDp = when (segment.attachment.type) {
-                    Attachment.Type.AUDIO -> 36
+                    Attachment.Type.AUDIO -> 40
                     Attachment.Type.GENERIC -> 36
                     else -> maxAttachmentHeight
                 }
 
-                container.addView(
-                    binding.root,
-                    LinearLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        heightDp.dp(context)
-                    )
+                val lp = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    heightDp.dp(context)
                 )
+                lp.topMargin = 8.dp(context)
+                container.addView(binding.root, lp)
             }
         }
     }
@@ -364,6 +368,10 @@ private fun bindInlineAttachment(
             val container = binding.root as? ViewGroup ?: return
             container.removeAllViews()
 
+            val audioHandler = Handler(Looper.getMainLooper())
+            var mediaPlayer: MediaPlayer? = null
+            var isPlaying = false
+
             val bar = LinearLayout(context).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = android.view.Gravity.CENTER_VERTICAL
@@ -375,29 +383,66 @@ private fun bindInlineAttachment(
                 setImageDrawable(ContextCompat.getDrawable(context, R.drawable.ic_play))
                 background = null
                 layoutParams = LinearLayout.LayoutParams(32.dp(context), 32.dp(context))
-                setOnClickListener {
-                    try {
-                        val intent = Intent(context, MediaActivity::class.java).apply {
-                            putExtra(MediaActivity.ATTACHMENT, attachment)
-                        }
-                        context.startActivity(intent)
-                    } catch (_: Exception) {}
-                }
             }
             bar.addView(playBtn)
 
-            val fileName = TextView(context).apply {
-                text = attachment.description.ifEmpty { attachment.fileName }
-                setTextColor(Color.parseColor("#333333"))
-                textSize = 13f
-                maxLines = 1
-                ellipsize = android.text.TextUtils.TruncateAt.END
+            val seekBar = SeekBar(context).apply {
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
                     marginStart = 8.dp(context)
                     marginEnd = 8.dp(context)
                 }
+                max = 100
             }
-            bar.addView(fileName)
+            bar.addView(seekBar)
+
+            playBtn.setOnClickListener {
+                val uri = attachment.uri(context) ?: return@setOnClickListener
+                if (isPlaying) {
+                    mediaPlayer?.pause()
+                    isPlaying = false
+                    playBtn.setImageDrawable(ContextCompat.getDrawable(context, R.drawable.ic_play))
+                } else {
+                    if (mediaPlayer == null) {
+                        mediaPlayer = MediaPlayer().apply {
+                            setDataSource(context, uri)
+                            prepare()
+                            setOnCompletionListener {
+                                isPlaying = false
+                                playBtn.setImageDrawable(ContextCompat.getDrawable(context, R.drawable.ic_play))
+                                seekBar.progress = 0
+                            }
+                        }
+                    }
+                    mediaPlayer?.start()
+                    isPlaying = true
+                    playBtn.setImageDrawable(ContextCompat.getDrawable(context, R.drawable.ic_pause))
+
+                    val updateSeekBar = object : Runnable {
+                        override fun run() {
+                            if (mediaPlayer != null && isPlaying) {
+                                val pos = mediaPlayer!!.currentPosition
+                                val dur = mediaPlayer!!.duration
+                                if (dur > 0) {
+                                    seekBar.progress = (pos * 100L / dur).toInt()
+                                }
+                                audioHandler.postDelayed(this, 300L)
+                            }
+                        }
+                    }
+                    audioHandler.post(updateSeekBar)
+                }
+            }
+
+            seekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                override fun onProgressChanged(sb: SeekBar?, progress: Int, fromUser: Boolean) {
+                    if (fromUser && mediaPlayer != null) {
+                        val dur = mediaPlayer!!.duration
+                        mediaPlayer!!.seekTo((progress.toLong() * dur / 100).toInt())
+                    }
+                }
+                override fun onStartTrackingTouch(sb: SeekBar?) {}
+                override fun onStopTrackingTouch(sb: SeekBar?) {}
+            })
 
             container.addView(bar, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         }
