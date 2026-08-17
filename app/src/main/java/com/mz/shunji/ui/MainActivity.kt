@@ -166,22 +166,16 @@ class MainActivity : BaseActivity() {
                 }
 
                 lifecycleScope.launch {
-                    val args = bundleOf(
-                        "transitionName" to "",
-                        "newNoteTitle" to title,
-                        "newNoteContent" to content,
-                    )
-
+                    val attachments = mutableListOf<Attachment>()
                     if (uri != null) {
                         val newUri = copySharedMedia(uri)
                         if (newUri != null) {
                             withContext(Dispatchers.IO) {
-                                val attachment = Attachment.fromUri(this@MainActivity, newUri)
-                                args.putParcelableArray("newNoteAttachments", arrayOf(attachment))
+                                attachments.add(Attachment.fromUri(this@MainActivity, newUri))
                             }
                         }
                     }
-                    navController.handleDeepLink(getDeepLink(args))
+                    showShareTargetDialog(title, content, attachments)
                 }
             }
 
@@ -203,24 +197,16 @@ class MainActivity : BaseActivity() {
 
                 if (!uris.isNullOrEmpty()) {
                     lifecycleScope.launch {
-                        val args = bundleOf(
-                            "transitionName" to "",
-                            "newNoteTitle" to (intent.getStringExtra(Intent.EXTRA_TITLE) ?: ""),
-                            "newNoteContent" to (intent.getStringExtra(Intent.EXTRA_TEXT) ?: ""),
-                        )
-
-                        withContext(Dispatchers.IO) {
-                            val attachments = uris.mapNotNull { uri ->
+                        val title = intent.getStringExtra(Intent.EXTRA_TITLE) ?: ""
+                        val content = intent.getStringExtra(Intent.EXTRA_TEXT) ?: ""
+                        val attachments = withContext(Dispatchers.IO) {
+                            uris.mapNotNull { uri ->
                                 copySharedMedia(uri)?.let { newUri ->
                                     Attachment.fromUri(this@MainActivity, newUri)
                                 }
-                            }.toTypedArray()
-
-                            if (attachments.isNotEmpty()) {
-                                args.putParcelableArray("newNoteAttachments", attachments)
                             }
                         }
-                        navController.handleDeepLink(getDeepLink(args))
+                        showShareTargetDialog(title, content, attachments)
                     }
                 }
             }
@@ -252,6 +238,97 @@ class MainActivity : BaseActivity() {
         .setArguments(args)
         .createTaskStackBuilder()
         .first()
+
+    private fun showShareTargetDialog(title: String, content: String, attachments: List<Attachment>) {
+        val items = arrayOf(
+            getString(R.string.share_target_new_note),
+            getString(R.string.share_target_existing_note)
+        )
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle(getString(R.string.share_target_title))
+            .setItems(items) { dialog, which ->
+                dialog.dismiss()
+                if (which == 0) {
+                    navigateToNewNote(title, content, attachments)
+                } else {
+                    showNotePickerDialog(title, content, attachments)
+                }
+            }
+            .setNegativeButton(getString(R.string.action_cancel)) { dialog, _ -> dialog.dismiss() }
+            .show()
+    }
+
+    private fun showNotePickerDialog(title: String, content: String, attachments: List<Attachment>) {
+        lifecycleScope.launch {
+            val notes = activityModel.getNotes().first()
+            if (notes.isEmpty()) {
+                navigateToNewNote(title, content, attachments)
+                return@launch
+            }
+
+            val noteTitles = notes.map { note ->
+                note.title.ifEmpty { getString(R.string.note_untitled) }
+            }.toTypedArray()
+
+            androidx.appcompat.app.AlertDialog.Builder(this@MainActivity)
+                .setTitle(getString(R.string.share_select_note))
+                .setItems(noteTitles) { dialog, which ->
+                    dialog.dismiss()
+                    val selectedNote = notes[which]
+                    showInsertPositionDialog(title, content, attachments, selectedNote.id ?: return@setItems)
+                }
+                .setNegativeButton(getString(R.string.action_cancel)) { dialog, _ -> dialog.dismiss() }
+                .show()
+        }
+    }
+
+    private fun showInsertPositionDialog(
+        title: String, content: String, attachments: List<Attachment>, noteId: Long
+    ) {
+        val items = arrayOf(
+            getString(R.string.share_insert_at_beginning),
+            getString(R.string.share_insert_at_end)
+        )
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle(getString(R.string.share_insert_position))
+            .setItems(items) { dialog, which ->
+                dialog.dismiss()
+                val position = if (which == 0) "beginning" else "end"
+                navigateToExistingNote(title, content, attachments, noteId, position)
+            }
+            .setNegativeButton(getString(R.string.action_cancel)) { dialog, _ -> dialog.dismiss() }
+            .show()
+    }
+
+    private fun navigateToNewNote(title: String, content: String, attachments: List<Attachment>) {
+        lifecycleScope.launch {
+            val args = bundleOf(
+                "transitionName" to "",
+                "newNoteTitle" to title,
+                "newNoteContent" to content,
+            )
+            if (attachments.isNotEmpty()) {
+                args.putParcelableArray("newNoteAttachments", attachments.toTypedArray())
+            }
+            navController.handleDeepLink(getDeepLink(args))
+        }
+    }
+
+    private fun navigateToExistingNote(
+        title: String, content: String, attachments: List<Attachment>, noteId: Long, position: String
+    ) {
+        lifecycleScope.launch {
+            val args = bundleOf(
+                "transitionName" to "",
+                "noteId" to noteId,
+            )
+            if (attachments.isNotEmpty()) {
+                args.putParcelableArray("sharedAttachments", attachments.toTypedArray())
+                args.putString("insertPosition", position)
+            }
+            navController.handleDeepLink(getDeepLink(args))
+        }
+    }
 
     private fun setupDrawerHeader() {
         val header = binding.navigationView.getHeaderView(0)

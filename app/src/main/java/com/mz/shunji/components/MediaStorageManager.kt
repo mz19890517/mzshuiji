@@ -60,6 +60,7 @@ class MediaStorageManager(
                     MediaType.IMAGE -> "img_"
                     MediaType.AUDIO -> "audio_"
                     MediaType.VIDEO -> "video_"
+                    MediaType.GENERIC -> "file_"
                 }
 
                 val file = File.createTempFile(prefix, extension, directory)
@@ -71,6 +72,7 @@ class MediaStorageManager(
     enum class MediaType(val defaultExtension: String) {
         IMAGE(".jpg"),
         VIDEO(".mp4"),
-        AUDIO(".mp3")
+        AUDIO(".mp3"),
+        GENERIC("")
     }
 }

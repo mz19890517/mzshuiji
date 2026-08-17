@@ -170,6 +170,16 @@ class EditorViewModel(
         )
     }
 
+    fun insertSharedAttachments(attachments: List<Attachment>, atBeginning: Boolean) = update { note ->
+        val markers = attachments.joinToString("") { InlineContent.markerFor(it) }
+        val newContent = InlineContent.insertMarkersAt(note.content, markers, atBeginning)
+        note.copy(
+            attachments = note.attachments + attachments,
+            content = newContent,
+            modifiedDate = Instant.now().epochSecond,
+        )
+    }
+
     fun updateTaskList(list: List<NoteTask>) = update { note ->
         note.copy(
             taskList = list,

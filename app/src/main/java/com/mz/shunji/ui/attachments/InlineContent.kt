@@ -1,12 +1,25 @@
 package com.mz.shunji.ui.attachments
 
 import android.content.Context
+import android.content.Intent
 import android.graphics.Color
+import android.graphics.drawable.ColorDrawable
+import android.os.Build
+import android.os.Handler
+import android.os.Looper
+import android.view.DragEvent
+import android.view.GestureDetector
+import android.view.MotionEvent
+import android.view.View
 import android.view.ViewGroup
+import android.view.ViewParent
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
+import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.widget.AppCompatTextView
+import androidx.core.content.ContextCompat
 import androidx.core.view.isVisible
 import coil.decode.VideoFrameDecoder
 import coil.fetch.Fetcher
@@ -17,6 +30,7 @@ import com.mz.shunji.data.model.Attachment
 import com.mz.shunji.data.model.Note
 import com.mz.shunji.databinding.LayoutAttachmentBinding
 import com.mz.shunji.ui.editor.markdown.applyTo
+import com.mz.shunji.ui.media.MediaActivity
 import com.mz.shunji.ui.utils.coil.AlbumArtFetcher
 import com.mz.shunji.ui.utils.dp
 
@@ -59,6 +73,15 @@ object InlineContent {
         return result
     }
 
+    fun insertMarkersAt(content: String, markers: String, atBeginning: Boolean): String {
+        val newContent = content.trim()
+        return if (atBeginning) {
+            markers + newContent
+        } else {
+            newContent + markers
+        }
+    }
+
     sealed class Segment {
         data class Text(val text: String) : Segment()
         data class AttachmentRef(val attachment: Attachment) : Segment()
@@ -92,7 +115,10 @@ object InlineContent {
  * Renders a note in inline mode into the given container. Text segments are rendered with
  * markwon (if the note has markdown enabled), attachment segments as inline preview cards.
  *
- * @param onAttachmentClick invoked when an inline attachment is tapped; null means not clickable.
+ * Gesture support:
+ * - Single tap: show attachment menu
+ * - Double tap: open/preview attachment
+ * - Long press + drag: reorder attachments
  */
 fun renderInlineContent(
     container: LinearLayout,
@@ -103,11 +129,16 @@ fun renderInlineContent(
     maxAttachmentHeight: Int = 220,
     onAttachmentClick: ((Attachment) -> Unit)? = null,
     onAttachmentLongClick: ((Attachment) -> Boolean)? = null,
+    onAttachmentMenuClick: ((Attachment) -> Unit)? = null,
+    onAttachmentsReordered: ((List<Attachment>) -> Unit)? = null,
+    isEditMode: Boolean = false,
 ) {
     container.removeAllViews()
 
     val segments = InlineContent.parse(note.content, note.attachments)
-    segments.forEach { segment ->
+    var dragIndex = -1
+
+    segments.forEachIndexed { index, segment ->
         when (segment) {
             is InlineContent.Segment.Text -> {
                 val textView = AppCompatTextView(context).apply {
@@ -136,17 +167,96 @@ fun renderInlineContent(
                     false
                 )
                 bindInlineAttachment(binding, context, segment.attachment, maxAttachmentHeight)
-                if (onAttachmentClick != null) {
-                    binding.root.setOnClickListener { onAttachmentClick(segment.attachment) }
+
+                if (!isEditMode) {
+                    val gestureDetector = GestureDetector(context, object : GestureDetector.SimpleOnGestureListener() {
+                        override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
+                            onAttachmentMenuClick?.invoke(segment.attachment)
+                            return true
+                        }
+
+                        override fun onDoubleTap(e: MotionEvent): Boolean {
+                            onAttachmentClick?.invoke(segment.attachment)
+                            return true
+                        }
+
+                        override fun onLongPress(e: MotionEvent) {
+                            onAttachmentLongClick?.invoke(segment.attachment)
+                        }
+                    })
+
+                    binding.root.setOnTouchListener { view, event ->
+                        gestureDetector.onTouchEvent(event)
+                    }
+
+                    binding.root.setOnDragListener { v, dragEvent ->
+                        when (dragEvent.action) {
+                            DragEvent.ACTION_DRAG_STARTED -> {
+                                dragIndex = dragEvent.clipData.getItemAt(0).text.toString().toIntOrNull() ?: -1
+                                v.alpha = 0.5f
+                                true
+                            }
+                            DragEvent.ACTION_DRAG_ENTERED -> {
+                                v.alpha = 0.8f
+                                true
+                            }
+                            DragEvent.ACTION_DRAG_EXITED -> {
+                                v.alpha = 0.5f
+                                true
+                            }
+                            DragEvent.ACTION_DROP -> {
+                                val targetIndex = index
+                                if (dragIndex >= 0 && dragIndex != targetIndex && onAttachmentsReordered != null) {
+                                    val attachments = note.attachments.toMutableList()
+                                    if (dragIndex < attachments.size && targetIndex < attachments.size) {
+                                        val item = attachments.removeAt(dragIndex)
+                                        attachments.add(targetIndex, item)
+                                        onAttachmentsReordered(attachments)
+                                    }
+                                }
+                                v.alpha = 1f
+                                true
+                            }
+                            DragEvent.ACTION_DRAG_ENDED -> {
+                                v.alpha = 1f
+                                dragIndex = -1
+                                true
+                            }
+                            else -> false
+                        }
+                    }
+
+                    binding.root.setOnLongClickListener { view ->
+                        val clipData = android.content.ClipData.newPlainText("attachment_index", index.toString())
+                        val shadow = View.DragShadowBuilder(view)
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                            view.startDragAndDrop(clipData, shadow, null, 0)
+                        } else {
+                            @Suppress("DEPRECATION")
+                            view.startDrag(clipData, shadow, null, 0)
+                        }
+                        true
+                    }
+                } else {
+                    if (onAttachmentClick != null) {
+                        binding.root.setOnClickListener { onAttachmentClick(segment.attachment) }
+                    }
+                    if (onAttachmentLongClick != null) {
+                        binding.root.setOnLongClickListener { onAttachmentLongClick(segment.attachment) }
+                    }
                 }
-                if (onAttachmentLongClick != null) {
-                    binding.root.setOnLongClickListener { onAttachmentLongClick(segment.attachment) }
+
+                val heightDp = when (segment.attachment.type) {
+                    Attachment.Type.AUDIO -> 36
+                    Attachment.Type.GENERIC -> 36
+                    else -> maxAttachmentHeight
                 }
+
                 container.addView(
                     binding.root,
                     LinearLayout.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT,
-                        maxAttachmentHeight.dp(context)
+                        heightDp.dp(context)
                     )
                 )
             }
@@ -177,25 +287,117 @@ private fun bindInlineAttachment(
         }
 
         Attachment.Type.AUDIO -> {
-            binding.imageView.load(attachment.uri(context)) {
-                fetcherFactory(Fetcher.Factory { data, options, _ ->
-                    (data as? android.net.Uri)?.let {
-                        AlbumArtFetcher(context, it, options)
-                    }
-                })
+            binding.imageView.isVisible = false
+            binding.indicatorAttachmentType.isVisible = false
+            binding.textView.isVisible = false
+
+            val container = binding.root as? ViewGroup ?: return
+            container.removeAllViews()
+
+            val bar = LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = android.view.Gravity.CENTER_VERTICAL
+                setPadding(8.dp(context), 0, 8.dp(context), 0)
+                setBackgroundColor(Color.parseColor("#1A000000"))
             }
-            setIndicator(binding, context, R.drawable.ic_music)
+
+            val playBtn = android.widget.ImageButton(context).apply {
+                setImageDrawable(ContextCompat.getDrawable(context, R.drawable.ic_play))
+                background = null
+                layoutParams = LinearLayout.LayoutParams(32.dp(context), 32.dp(context))
+                setOnClickListener {
+                    try {
+                        val intent = Intent(context, MediaActivity::class.java).apply {
+                            putExtra(MediaActivity.ATTACHMENT, attachment)
+                        }
+                        context.startActivity(intent)
+                    } catch (_: Exception) {}
+                }
+            }
+            bar.addView(playBtn)
+
+            val fileName = TextView(context).apply {
+                text = attachment.description.ifEmpty { attachment.fileName }
+                setTextColor(Color.parseColor("#333333"))
+                textSize = 13f
+                maxLines = 1
+                ellipsize = android.text.TextUtils.TruncateAt.END
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                    marginStart = 8.dp(context)
+                    marginEnd = 8.dp(context)
+                }
+            }
+            bar.addView(fileName)
+
+            container.addView(bar, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         }
 
         Attachment.Type.GENERIC -> {
-            binding.imageView.setColorFilter(Color.WHITE)
-            binding.imageView.load(R.drawable.ic_file)
+            binding.imageView.isVisible = false
+            binding.indicatorAttachmentType.isVisible = false
+            binding.textView.isVisible = false
+
+            val container = binding.root as? ViewGroup ?: return
+            container.removeAllViews()
+
+            val bar = LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = android.view.Gravity.CENTER_VERTICAL
+                setPadding(8.dp(context), 0, 8.dp(context), 0)
+                setBackgroundColor(Color.parseColor("#1A000000"))
+            }
+
+            val icon = android.widget.ImageView(context).apply {
+                setImageDrawable(ContextCompat.getDrawable(context, R.drawable.ic_file))
+                setColorFilter(Color.parseColor("#666666"))
+                layoutParams = LinearLayout.LayoutParams(24.dp(context), 24.dp(context))
+            }
+            bar.addView(icon)
+
+            val fileNameText = attachment.description.ifEmpty { attachment.fileName }
+            val fileNameView = TextView(context).apply {
+                text = fileNameText
+                setTextColor(Color.parseColor("#333333"))
+                textSize = 13f
+                maxLines = 1
+                ellipsize = android.text.TextUtils.TruncateAt.END
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                    marginStart = 8.dp(context)
+                    marginEnd = 8.dp(context)
+                }
+            }
+            bar.addView(fileNameView)
+
+            val fileUri = attachment.uri(context)
+            val fileSize = try {
+                context.contentResolver.openInputStream(fileUri)?.use { it.available().toLong() } ?: 0L
+            } catch (_: Exception) { 0L }
+            val sizeText = formatFileSize(fileSize)
+            val sizeView = TextView(context).apply {
+                text = sizeText
+                setTextColor(Color.parseColor("#999999"))
+                textSize = 12f
+            }
+            bar.addView(sizeView)
+
+            container.addView(bar, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         }
     }
 
-    if (attachment.description.isNotEmpty()) {
-        binding.textView.isVisible = true
-        binding.textView.text = attachment.description
+    if (attachment.type != Attachment.Type.AUDIO && attachment.type != Attachment.Type.GENERIC) {
+        if (attachment.description.isNotEmpty()) {
+            binding.textView.isVisible = true
+            binding.textView.text = attachment.description
+        }
+    }
+}
+
+private fun formatFileSize(bytes: Long): String {
+    return when {
+        bytes < 1024 -> "$bytes B"
+        bytes < 1024 * 1024 -> "${bytes / 1024} KB"
+        bytes < 1024 * 1024 * 1024 -> "${bytes / (1024 * 1024)} MB"
+        else -> "${bytes / (1024 * 1024 * 1024)} GB"
     }
 }
 

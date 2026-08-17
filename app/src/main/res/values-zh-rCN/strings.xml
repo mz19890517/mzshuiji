@@ -297,4 +297,11 @@
     <string name="preferences_color_scheme_teal">"蓝绿色 "</string>
     <string name="preferences_color_scheme_cyan">青色</string>
     <string name="preferences_color_scheme_brown">"棕色的 "</string>
+    <string name="share_target_title">保存到</string>
+    <string name="share_target_new_note">新建笔记</string>
+    <string name="share_target_existing_note">已有笔记</string>
+    <string name="share_insert_position">插入位置</string>
+    <string name="share_insert_at_beginning">开头</string>
+    <string name="share_insert_at_end">末尾</string>
+    <string name="share_select_note">选择笔记</string>
 </resources>

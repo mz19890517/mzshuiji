@@ -96,6 +96,13 @@
                   app:argType="com.mz.shunji.data.model.Attachment[]"
                   android:defaultValue="@null"
                   app:nullable="true"/>
+        <argument android:name="sharedAttachments"
+                  app:argType="com.mz.shunji.data.model.Attachment[]"
+                  android:defaultValue="@null"
+                  app:nullable="true"/>
+        <argument android:name="insertPosition"
+                  app:argType="string"
+                  android:defaultValue="new"/>
 
     </fragment>
 

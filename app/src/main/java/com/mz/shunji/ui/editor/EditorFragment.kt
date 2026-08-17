@@ -309,6 +309,12 @@ class EditorFragment : BaseFragment(R.layout.fragment_editor) {
             )
         }
 
+        val sharedAttachments = args.sharedAttachments?.toList()
+        if (sharedAttachments != null && sharedAttachments.isNotEmpty() && args.noteId > 0L) {
+            val atBeginning = args.insertPosition == "beginning"
+            model.insertSharedAttachments(sharedAttachments, atBeginning)
+        }
+
         setupAttachmentsRecycler()
         setupTasksRecycler()
         observeData()
@@ -953,9 +959,19 @@ class EditorFragment : BaseFragment(R.layout.fragment_editor) {
                                 }
                             )
                         },
-                        onAttachmentLongClick = { attachment ->
+                        onAttachmentMenuClick = { attachment ->
                             showInlineAttachmentMenu(attachment)
+                        },
+                        onAttachmentLongClick = { attachment ->
                             true
+                        },
+                        onAttachmentsReordered = { newAttachments ->
+                            val note = data.note ?: return@renderInlineContent
+                            val markers = newAttachments.joinToString("") { InlineContent.markerFor(it) }
+                            val newContent = InlineContent.stripMarkers(note.content).let { stripped ->
+                                if (stripped.isBlank()) markers else markers + stripped
+                            }
+                            model.insertAttachmentsWithContent(newAttachments, newContent.trim())
                         },
                     )
                 }
@@ -1285,9 +1301,19 @@ class EditorFragment : BaseFragment(R.layout.fragment_editor) {
                             }
                         )
                     },
-                    onAttachmentLongClick = { attachment ->
+                    onAttachmentMenuClick = { attachment ->
                         showInlineAttachmentMenu(attachment)
+                    },
+                    onAttachmentLongClick = { attachment ->
                         true
+                    },
+                    onAttachmentsReordered = { newAttachments ->
+                        val currentNote = data.note ?: return@renderInlineContent
+                        val markers = newAttachments.joinToString("") { InlineContent.markerFor(it) }
+                        val newContent = InlineContent.stripMarkers(currentNote.content).let { stripped ->
+                            if (stripped.isBlank()) markers else markers + stripped
+                        }
+                        model.insertAttachmentsWithContent(newAttachments, newContent.trim())
                     },
                 )
             }

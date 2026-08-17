@@ -65,6 +65,8 @@ class ActivityViewModel(
     var notesToBackup: Set<Note>? = null
     var tempPhotoUri: Uri? = null
 
+    fun getNotes() = noteRepository.getNonDeletedOrArchived()
+
     fun syncAsync(): Deferred<BaseResult> = syncScope.async { noteRepository.syncNotes() }
 
     fun discardEmptyNotesAsync() = viewModelScope.async(Dispatchers.IO) { noteRepository.discardEmptyNotes() }
@@ -194,7 +196,7 @@ class ActivityViewModel(
             mimeType.startsWith("image/") -> MediaStorageManager.MediaType.IMAGE
             mimeType.startsWith("video/") -> MediaStorageManager.MediaType.VIDEO
             mimeType.startsWith("audio/") -> MediaStorageManager.MediaType.AUDIO
-            else -> return@withContext null
+            else -> MediaStorageManager.MediaType.GENERIC
         }
 
         val extension = MimeTypeMap.getSingleton().getExtensionFromMimeType(mimeType)?.let { ".$it" }

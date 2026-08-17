@@ -41,6 +41,13 @@
                 <data android:mimeType="audio/*" />
             </intent-filter>
 
+            <!-- Handle any file type sharing -->
+            <intent-filter android:label="@string/shortcut_take_note">
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
+
             <!-- Handle multiple media sharing -->
             <intent-filter android:label="@string/shortcut_take_note">
                 <action android:name="android.intent.action.SEND_MULTIPLE" />
@@ -56,6 +63,13 @@
                 <action android:name="android.intent.action.SEND_MULTIPLE" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="audio/*" />
+            </intent-filter>
+
+            <!-- Handle any file type multiple sharing -->
+            <intent-filter android:label="@string/shortcut_take_note">
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
             </intent-filter>
 
         </activity>

@@ -19,7 +19,6 @@ object ChooseFilesContract : ActivityResultContract<None?, List<Uri>>() {
     override fun createIntent(context: Context, input: None?): Intent {
         return Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
             addCategory(Intent.CATEGORY_OPENABLE)
-            putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("image/*", "video/*", "audio/*"))
             putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
             type = "*/*"
         }
