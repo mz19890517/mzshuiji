@@ -9,8 +9,6 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.view.DragEvent
-import android.view.GestureDetector
-import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.ViewParent
@@ -225,24 +223,18 @@ fun renderInlineContent(
                 if (!isEditMode) {
                     val attPath = segment.attachment.path
 
-                    val gestureDetector = GestureDetector(context, object : GestureDetector.SimpleOnGestureListener() {
-                        override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
-                            onAttachmentMenuClick?.invoke(segment.attachment)
-                            return true
+                    binding.root.setOnLongClickListener { view ->
+                        Toast.makeText(context, "拖动中，拖到目标位置释放", Toast.LENGTH_SHORT).show()
+                        val clipData = android.content.ClipData.newPlainText("att_path", attPath)
+                        val shadow = View.DragShadowBuilder(view)
+                        startAutoScroll()
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                            view.startDragAndDrop(clipData, shadow, null, 0)
+                        } else {
+                            @Suppress("DEPRECATION")
+                            view.startDrag(clipData, shadow, null, 0)
                         }
-
-                        override fun onDoubleTap(e: MotionEvent): Boolean {
-                            onAttachmentClick?.invoke(segment.attachment)
-                            return true
-                        }
-
-                        override fun onLongPress(e: MotionEvent) {
-                            onAttachmentLongClick?.invoke(segment.attachment)
-                        }
-                    })
-
-                    binding.root.setOnTouchListener { view, event ->
-                        gestureDetector.onTouchEvent(event)
+                        true
                     }
 
                     binding.root.setOnDragListener { v, dragEvent ->
@@ -280,19 +272,6 @@ fun renderInlineContent(
                             }
                             else -> false
                         }
-                    }
-
-                    binding.root.setOnLongClickListener { view ->
-                        val clipData = android.content.ClipData.newPlainText("att_path", attPath)
-                        val shadow = View.DragShadowBuilder(view)
-                        startAutoScroll()
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                            view.startDragAndDrop(clipData, shadow, null, 0)
-                        } else {
-                            @Suppress("DEPRECATION")
-                            view.startDrag(clipData, shadow, null, 0)
-                        }
-                        true
                     }
                 } else {
                     if (onAttachmentClick != null) {
