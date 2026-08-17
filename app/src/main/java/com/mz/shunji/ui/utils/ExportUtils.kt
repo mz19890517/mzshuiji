@@ -39,9 +39,18 @@ object ExportUtils {
             val page = document.startPage(pageInfo)
 
             val canvas = page.canvas
-            val paint = Paint().apply {
+            val titlePaint = Paint().apply {
                 color = Color.BLACK
                 isAntiAlias = true
+                textSize = 18f
+                isFakeBoldText = true
+                typeface = android.graphics.Typeface.DEFAULT_BOLD
+            }
+            val contentPaint = Paint().apply {
+                color = Color.BLACK
+                isAntiAlias = true
+                textSize = 12f
+                typeface = android.graphics.Typeface.DEFAULT
             }
 
             var y = 50f
@@ -49,42 +58,83 @@ object ExportUtils {
             val rightMargin = 555f
             val lineHeight = 20f
 
-            // Draw title
-            paint.textSize = 18f
-            paint.isFakeBoldText = true
-            val titleLines = breakText(canvas, title, paint, rightMargin - leftMargin)
-            for (line in titleLines) {
-                canvas.drawText(line, leftMargin, y, paint)
-                y += lineHeight + 8
-            }
-            y += 10
+            // Draw title using StaticLayout for proper CJK rendering
+            val titleLayout = android.text.StaticLayout.Builder.obtain(
+                title, 0, title.length,
+                android.text.TextPaint(titlePaint),
+                (rightMargin - leftMargin).toInt()
+            ).setAlignment(android.text.Layout.Alignment.ALIGN_NORMAL)
+                .setLineSpacing(0f, 1f)
+                .build()
+            canvas.save()
+            canvas.translate(leftMargin, y)
+            titleLayout.draw(canvas)
+            canvas.restore()
+            y += titleLayout.height + 10f
 
-            // Draw content
-            paint.textSize = 12f
-            paint.isFakeBoldText = false
+            // Draw content using StaticLayout for proper CJK rendering
             val content = if (note.isList) note.taskListToString(withCheckmarks = true) else note.content
-            val contentLines = breakText(canvas, content, paint, rightMargin - leftMargin)
-            for (line in contentLines) {
-                if (y > 800f) {
-                    document.finishPage(page)
-                    val newPageInfo = PdfDocument.PageInfo.Builder(595, 842, document.pages.size + 1).create()
-                    val newPage = document.startPage(newPageInfo)
-                    y = 50f
+            val contentLayout = android.text.StaticLayout.Builder.obtain(
+                content, 0, content.length,
+                android.text.TextPaint(contentPaint),
+                (rightMargin - leftMargin).toInt()
+            ).setAlignment(android.text.Layout.Alignment.ALIGN_NORMAL)
+                .setLineSpacing(0f, 1f)
+                .build()
+
+            var contentOffset = 0
+            val pageHeight = 790f
+            while (contentOffset < content.length) {
+                canvas.save()
+                canvas.translate(leftMargin, y)
+                val partialLayout = android.text.StaticLayout.Builder.obtain(
+                    content, contentOffset, content.length,
+                    android.text.TextPaint(contentPaint),
+                    (rightMargin - leftMargin).toInt()
+                ).setAlignment(android.text.Layout.Alignment.ALIGN_NORMAL)
+                    .setLineSpacing(0f, 1f)
+                    .build()
+
+                // Find how many lines fit on this page
+                var linesUsed = 0
+                for (i in 0 until partialLayout.lineCount) {
+                    val lineBottom = partialLayout.getLineBottom(i)
+                    if (lineBottom > pageHeight - y + 50f) break
+                    linesUsed++
                 }
-                canvas.drawText(line, leftMargin, y, paint)
-                y += lineHeight
+                if (linesUsed == 0) linesUsed = 1
+
+                val visibleLayout = android.text.StaticLayout.Builder.obtain(
+                    content, contentOffset, content.length,
+                    android.text.TextPaint(contentPaint),
+                    (rightMargin - leftMargin).toInt()
+                ).setAlignment(android.text.Layout.Alignment.ALIGN_NORMAL)
+                    .setLineSpacing(0f, 1f)
+                    .build()
+
+                visibleLayout.draw(canvas)
+                canvas.restore()
+
+                contentOffset = visibleLayout.getLineEnd(linesUsed - 1)
+                if (contentOffset >= content.length) break
+
+                document.finishPage(page)
+                val newPageInfo = PdfDocument.PageInfo.Builder(595, 842, document.pages.size + 1).create()
+                val newPage = document.startPage(newPageInfo)
+                y = 50f
             }
 
             document.finishPage(page)
 
-            // Save to cache first
+            // Save to cache
             val file = File(context.cacheDir, fileName)
             FileOutputStream(file).use { out ->
                 document.writeTo(out)
             }
             document.close()
-            file
+            if (file.exists() && file.length() > 0) file else null
         } catch (e: Exception) {
+            e.printStackTrace()
             null
         }
     }

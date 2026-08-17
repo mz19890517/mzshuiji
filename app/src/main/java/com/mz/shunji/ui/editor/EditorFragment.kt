@@ -79,6 +79,7 @@ import com.mz.shunji.ui.attachments.copyUriToFile
 import com.mz.shunji.ui.attachments.getHtmlBaseDir
 import com.mz.shunji.ui.attachments.getAttachmentFilename
 import com.mz.shunji.ui.common.BaseDialog
+import java.io.File
 import com.mz.shunji.ui.common.BaseFragment
 import com.mz.shunji.ui.common.showMoveToNotebookDialog
 import com.mz.shunji.ui.editor.dialog.InsertHyperlinkDialog
@@ -371,7 +372,10 @@ class EditorFragment : BaseFragment(R.layout.fragment_editor) {
             if (model.editorMode == EditorViewModel.EditorMode.VIEW_EDIT) {
                 view.hideKeyboard()
             } else {
-                requestFocusForFields(true)
+                // Post to ensure EditText is visible before requesting focus
+                view.post {
+                    requestFocusForFields(true)
+                }
             }
             true
         }
@@ -1516,6 +1520,7 @@ class EditorFragment : BaseFragment(R.layout.fragment_editor) {
             EditorViewModel.EditorMode.VIEW_EDIT -> R.drawable.ic_show
             EditorViewModel.EditorMode.EDIT -> R.drawable.ic_edit_view
         })
+        fabChangeMode.imageTintList = android.content.res.ColorStateList.valueOf(android.graphics.Color.WHITE)
 
         // Hide floating tool button in READ mode
         if (isRead) {
@@ -1561,7 +1566,10 @@ class EditorFragment : BaseFragment(R.layout.fragment_editor) {
         val tapHandler = fun() {
             model.editorMode = EditorViewModel.EditorMode.EDIT
             updateEditMode()
-            requestFocusForFields(true)
+            // Post to ensure EditText is visible before requesting focus
+            binding.containerContentPreviewInline.post {
+                requestFocusForFields(true)
+            }
         }
 
         renderInlineContent(
@@ -1651,6 +1659,12 @@ class EditorFragment : BaseFragment(R.layout.fragment_editor) {
     private fun insertAttachmentsInline(attachments: List<Attachment>) {
         val note = data.note ?: return
 
+        // Check for HTML files with associated files
+        val htmlAttachments = attachments.filter { it.type == Attachment.Type.HTML }
+        if (htmlAttachments.isNotEmpty()) {
+            checkAndCopyHtmlWithAssociatedFiles(htmlAttachments)
+        }
+
         if (note.isInlineMode && !note.isList) {
             val markers = attachments.joinToString("") { InlineContent.markerFor(it) }
             val newContent = (note.content + markers).trim()
@@ -1660,6 +1674,69 @@ class EditorFragment : BaseFragment(R.layout.fragment_editor) {
             }
         } else {
             model.insertAttachments(*attachments.toTypedArray())
+        }
+    }
+
+    private fun checkAndCopyHtmlWithAssociatedFiles(htmlAttachments: List<Attachment>) {
+        for (htmlAtt in htmlAttachments) {
+            val htmlUri = htmlAtt.uri(requireContext()) ?: continue
+            val htmlDir = File(htmlUri.path).parentFile ?: continue
+            if (!htmlDir.exists() || !htmlDir.isDirectory) continue
+
+            val associatedFiles = htmlDir.listFiles()?.filter { it.name != File(htmlUri.path).name } ?: emptyList()
+            if (associatedFiles.isEmpty()) {
+                Toast.makeText(requireContext(), "HTML 文件没有找到关联文件（JS/CSS/图片）", Toast.LENGTH_SHORT).show()
+                continue
+            }
+
+            val fileNames = associatedFiles.map { it.name }.toTypedArray()
+            val checkedItems = BooleanArray(associatedFiles.size) { true }
+
+            BaseDialog.build(requireContext()) {
+                setTitle("发现 ${associatedFiles.size} 个关联文件")
+                setMultiChoiceItems(fileNames, checkedItems) { _, which, isChecked ->
+                    checkedItems[which] = isChecked
+                }
+                setMessage("是否将以下关联文件一并添加？\n${associatedFiles.joinToString("\n") { it.name }}")
+                setPositiveButton("添加选中") { _, _ ->
+                    val selectedFiles = associatedFiles.filterIndexed { index, _ -> checkedItems[index] }
+                    copyHtmlAndAssociatedFiles(htmlAtt, htmlDir, selectedFiles)
+                }
+                setNegativeButton("跳过") { _, _ ->
+                    copyHtmlAndAssociatedFiles(htmlAtt, htmlDir, emptyList())
+                }
+                setOnCancelListener {
+                    copyHtmlAndAssociatedFiles(htmlAtt, htmlDir, emptyList())
+                }
+            }.show()
+            return // Only handle the first HTML file
+        }
+    }
+
+    private fun copyHtmlAndAssociatedFiles(htmlAttachment: Attachment, sourceDir: File, associatedFiles: List<File>) {
+        lifecycleScope.launch {
+            with(kotlinx.coroutines.Dispatchers.IO) {
+                val htmlBaseDir = getHtmlBaseDir(requireContext())
+                val htmlFileName = File(htmlAttachment.uri(requireContext())?.path ?: return@with).name
+
+                // Copy HTML file
+                val htmlSource = File(sourceDir, htmlFileName)
+                val htmlDest = File(htmlBaseDir, htmlFileName)
+                if (htmlSource.exists()) {
+                    htmlSource.copyTo(htmlDest, overwrite = true)
+                }
+
+                // Copy associated files
+                for (file in associatedFiles) {
+                    val dest = File(htmlBaseDir, file.name)
+                    file.copyTo(dest, overwrite = true)
+                }
+            }
+            Toast.makeText(
+                requireContext(),
+                if (associatedFiles.isEmpty()) "HTML 文件已添加" else "HTML 及 ${associatedFiles.size} 个关联文件已添加",
+                Toast.LENGTH_SHORT
+            ).show()
         }
     }
 

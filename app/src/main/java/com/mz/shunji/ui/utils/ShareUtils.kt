@@ -70,7 +70,8 @@ fun shareAttachment(context: Context, attachment: Attachment) {
 }
 
 fun shareNoteAsText(context: Context, note: Note) {
-    val textContent = if (note.isList) note.taskListToString(withCheckmarks = true) else note.content
+    val rawContent = if (note.isList) note.taskListToString(withCheckmarks = true) else note.content
+    val textContent = stripMarkdown(rawContent)
     val sendIntent = Intent(Intent.ACTION_SEND).apply {
         putExtra(Intent.EXTRA_TITLE, note.title)
         putExtra(Intent.EXTRA_TEXT, if (note.title.isNotEmpty()) "${note.title}\n\n${textContent}" else textContent)
@@ -78,6 +79,31 @@ fun shareNoteAsText(context: Context, note: Note) {
     }
     val chooser = Intent.createChooser(sendIntent, context.getString(R.string.action_share))
     ContextCompat.startActivity(context, chooser, null)
+}
+
+private fun stripMarkdown(text: String): String {
+    var result = text
+    // Remove inline content markers [attachment:path]
+    result = result.replace(Regex("\\[attachment:[^\\]]*\\]"), "")
+    // Remove bold/italic markers
+    result = result.replace(Regex("\\*{1,3}([^*]+)\\*{1,3}"), "$1")
+    // Remove strikethrough
+    result = result.replace(Regex("~~([^~]+)~~"), "$1")
+    // Remove inline code
+    result = result.replace(Regex("`([^`]+)`"), "$1")
+    // Remove blockquotes
+    result = result.replace(Regex("^>\\s*", RegexOption.MULTILINE), "")
+    // Remove headings
+    result = result.replace(Regex("^#{1,6}\\s*", RegexOption.MULTILINE), "")
+    // Remove horizontal rules
+    result = result.replace(Regex("^-{3,}$", RegexOption.MULTILINE), "")
+    // Remove links [text](url) -> text
+    result = result.replace(Regex("\\[([^]]+)]\\([^)]+\\)"), "$1")
+    // Remove images ![alt](url)
+    result = result.replace(Regex("!\\[([^]]*)]\\([^)]+\\)"), "$1")
+    // Clean up multiple blank lines
+    result = result.replace(Regex("\\n{3,}"), "\n\n")
+    return result.trim()
 }
 
 fun shareNoteAsImages(context: Context, note: Note) {
