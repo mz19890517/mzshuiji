@@ -98,6 +98,7 @@ class MediaActivity : BaseActivity() {
                 }
             }
             Attachment.Type.GENERIC -> finish()
+            Attachment.Type.HTML -> finish()
         }
     }
 

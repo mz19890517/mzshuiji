@@ -40,11 +40,24 @@ class EditorViewModel(
     private val preferenceRepository: PreferenceRepository,
 ) : ViewModel() {
 
-    var inEditMode: Boolean = false
+    enum class EditorMode { READ, VIEW_EDIT, EDIT }
+
+    var editorMode: EditorMode = EditorMode.READ
     var isNotInitialized = true
     var moveCheckedItems: Boolean = true
     private val noteIdFlow: MutableStateFlow<Long?> = MutableStateFlow(null)
     var selectedRange = 0 to 0
+
+    val inEditMode: Boolean
+        get() = editorMode == EditorMode.EDIT
+
+    fun cycleMode() {
+        editorMode = when (editorMode) {
+            EditorMode.READ -> EditorMode.VIEW_EDIT
+            EditorMode.VIEW_EDIT -> EditorMode.EDIT
+            EditorMode.EDIT -> EditorMode.READ
+        }
+    }
 
     val data = noteIdFlow
         .filterNotNull()

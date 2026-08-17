@@ -75,6 +75,9 @@ import com.mz.shunji.ui.attachments.recycler.AttachmentRecyclerListener
 import com.mz.shunji.ui.attachments.recycler.AttachmentsAdapter
 import com.mz.shunji.ui.attachments.recycler.AttachmentsGridManager
 import com.mz.shunji.ui.attachments.uri
+import com.mz.shunji.ui.attachments.copyUriToFile
+import com.mz.shunji.ui.attachments.getHtmlBaseDir
+import com.mz.shunji.ui.attachments.getAttachmentFilename
 import com.mz.shunji.ui.common.BaseDialog
 import com.mz.shunji.ui.common.BaseFragment
 import com.mz.shunji.ui.common.showMoveToNotebookDialog
@@ -85,6 +88,7 @@ import com.mz.shunji.ui.editor.markdown.MarkdownSpan
 import com.mz.shunji.ui.editor.markdown.applyTo
 import com.mz.shunji.ui.editor.markdown.insertMarkdown
 import com.mz.shunji.ui.editor.markdown.toggleCheckmarkCurrentLine
+import com.mz.shunji.ui.media.HtmlPreviewActivity
 import com.mz.shunji.ui.media.MediaActivity
 import com.mz.shunji.ui.recorder.RECORDED_ATTACHMENT
 import com.mz.shunji.ui.recorder.RECORD_CODE
@@ -107,6 +111,10 @@ import com.mz.shunji.ui.utils.resId
 import com.mz.shunji.ui.utils.resolveAttribute
 import com.mz.shunji.ui.utils.shareAttachment
 import com.mz.shunji.ui.utils.shareNote
+import com.mz.shunji.ui.utils.shareNoteAsText
+import com.mz.shunji.ui.utils.shareNoteAsImages
+import com.mz.shunji.ui.utils.shareNoteAsFiles
+import com.mz.shunji.ui.utils.ExportUtils
 import com.mz.shunji.ui.utils.viewBinding
 import com.mz.shunji.ui.utils.views.BottomSheet
 import com.mz.shunji.ui.attachments.InlineContent
@@ -143,6 +151,7 @@ class EditorFragment : BaseFragment(R.layout.fragment_editor) {
 
     private lateinit var attachmentsAdapter: AttachmentsAdapter
     private lateinit var tasksAdapter: TasksAdapter
+    private var isToolsExpanded = false
 
     val markwon: Markwon by inject()
 
@@ -169,6 +178,18 @@ class EditorFragment : BaseFragment(R.layout.fragment_editor) {
 
         insertAttachmentsInline(listOf(Attachment.fromUri(requireContext(), uri)))
         activityModel.tempPhotoUri = null
+    }
+
+    private var pendingHtmlUri: Uri? = null
+    private var pendingAssociatedUris: MutableList<Uri> = mutableListOf()
+
+    private val requestAssociatedFilesLauncher = registerForActivityResult(ChooseFilesContract) { uris ->
+        if (uris.isEmpty() || pendingHtmlUri == null) {
+            pendingHtmlUri = null
+            return@registerForActivityResult
+        }
+        pendingAssociatedUris.addAll(uris)
+        copyHtmlWithAssociatedFiles()
     }
 
     private val itemTouchHelper = ItemTouchHelper(object : ItemTouchHelper.SimpleCallback(UP or DOWN, LEFT or RIGHT) {
@@ -346,8 +367,14 @@ class EditorFragment : BaseFragment(R.layout.fragment_editor) {
         }
 
         binding.fabChangeMode.setOnClickListener {
-            updateEditMode(!model.inEditMode)
-            if (model.inEditMode) requestFocusForFields(true) else view.hideKeyboard()
+            val prevMode = model.editorMode
+            model.cycleMode()
+            updateEditMode()
+            if (model.editorMode == EditorViewModel.EditorMode.EDIT) {
+                requestFocusForFields(true)
+            } else if (prevMode == EditorViewModel.EditorMode.EDIT) {
+                view.hideKeyboard()
+            }
         }
     }
 
@@ -392,12 +419,6 @@ class EditorFragment : BaseFragment(R.layout.fragment_editor) {
                     activity?.onBackPressed()
                 }
 
-                R.id.action_view_tags -> {
-                    findNavController().navigateSafely(
-                        EditorFragmentDirections.actionEditorToTags().setNoteId(note.id)
-                    )
-                }
-
                 R.id.action_view_reminders -> {
                     showRemindersDialog(note)
                 }
@@ -409,8 +430,14 @@ class EditorFragment : BaseFragment(R.layout.fragment_editor) {
                 }
 
                 R.id.action_change_mode -> {
-                    updateEditMode(!model.inEditMode)
-                    if (model.inEditMode) requestFocusForFields(true) else view?.hideKeyboard()
+                    val prevMode = model.editorMode
+                    model.cycleMode()
+                    updateEditMode()
+                    if (model.editorMode == EditorViewModel.EditorMode.EDIT) {
+                        requestFocusForFields(true)
+                    } else if (prevMode == EditorViewModel.EditorMode.EDIT) {
+                        view?.hideKeyboard()
+                    }
                     setupMenuItems(note, note.reminders.isNotEmpty())
                 }
 
@@ -427,29 +454,11 @@ class EditorFragment : BaseFragment(R.layout.fragment_editor) {
                 }
 
                 R.id.action_export_note -> {
-                    activityModel.notesToBackup = setOf(note)
-                    exportNotesLauncher.launch(null)
+                    showExportDialog(note)
                 }
 
                 R.id.action_share -> {
-                    shareNote(requireContext(), note)
-                }
-
-                R.id.action_attach_file -> {
-                    requestMediaLauncher.launch(null)
-                }
-
-                R.id.action_take_photo -> {
-                    lifecycleScope.launch {
-                        runCatching {
-                            takePhotoLauncher.launch(activityModel.createImageFile())
-                        }.getOrElse { Log.e(TAG, "Cannot launch camera app", it) }
-                    }
-                }
-
-                R.id.action_record_audio -> {
-                    clearFragmentResult(RECORD_CODE)
-                    RecordAudioDialog().show(parentFragmentManager, null)
+                    showShareDialog(note)
                 }
 
                 R.id.action_enable_disable_markdown -> {
@@ -594,7 +603,7 @@ class EditorFragment : BaseFragment(R.layout.fragment_editor) {
     private fun setMarkdownToolbarVisibility(note: Note? = data.note) = with(binding) {
         if (note == null) return@with
 
-        containerBottomToolbar.isVisible = !isList && note.isMarkdownEnabled && model.inEditMode && contentHasFocus
+        containerBottomToolbar.isVisible = !isList && note.isMarkdownEnabled && model.editorMode != EditorViewModel.EditorMode.READ && contentHasFocus
 
         scrollView.updateLayoutParams<ConstraintLayout.LayoutParams> {
             val actionBarSize = requireContext().getDimensionAttribute(R.attr.actionBarSize) ?: 0
@@ -708,11 +717,7 @@ class EditorFragment : BaseFragment(R.layout.fragment_editor) {
         findItem(R.id.action_restore_note)?.isVisible = note.isDeleted
         findItem(R.id.action_delete_permanently_note)?.isVisible = note.isDeleted
         findItem(R.id.action_delete_note)?.isVisible = !note.isDeleted
-        findItem(R.id.action_view_tags)?.isVisible = !note.isDeleted
         findItem(R.id.action_change_color)?.isVisible = !note.isDeleted
-        findItem(R.id.action_attach_file)?.isVisible = !note.isDeleted
-        findItem(R.id.action_record_audio)?.isVisible = !note.isDeleted
-        findItem(R.id.action_take_photo)?.isVisible = !note.isDeleted
         findItem(R.id.action_convert_note)?.apply {
             title =
                 if (note.isList) getString(R.string.action_convert_to_note) else getString(R.string.action_convert_to_list)
@@ -722,7 +727,11 @@ class EditorFragment : BaseFragment(R.layout.fragment_editor) {
         findItem(R.id.action_change_mode)?.apply {
             // if view/edit mode FAB isn't displayed (user pref) show it in the top menu
             if (!data.showFabChangeMode) {
-                setIcon(if (model.inEditMode) R.drawable.ic_show else R.drawable.ic_pencil)
+                setIcon(when (model.editorMode) {
+                    EditorViewModel.EditorMode.READ -> R.drawable.ic_pencil
+                    EditorViewModel.EditorMode.VIEW_EDIT -> R.drawable.ic_show
+                    EditorViewModel.EditorMode.EDIT -> R.drawable.ic_edit_view
+                })
 
                 isVisible = !note.isDeleted && !hasNoteEmptyContent(note)
             }
@@ -804,7 +813,7 @@ class EditorFragment : BaseFragment(R.layout.fragment_editor) {
             if (isFirstLoad) {
 
                 if (data.defaultEditorMode == DefaultEditorMode.EDIT) {
-                    model.inEditMode = true
+                    model.editorMode = EditorViewModel.EditorMode.EDIT
                 }
 
                 // apply font size preference
@@ -945,8 +954,8 @@ class EditorFragment : BaseFragment(R.layout.fragment_editor) {
             recyclerAttachments.isVisible = !isInline
 
             if (isInline) {
-                containerContentPreviewInline.isVisible = !model.inEditMode
-                if (!model.inEditMode) {
+                containerContentPreviewInline.isVisible = model.editorMode != EditorViewModel.EditorMode.EDIT
+                if (model.editorMode != EditorViewModel.EditorMode.EDIT) {
                     renderInlineContent(
                         containerContentPreviewInline,
                         requireContext(),
@@ -955,6 +964,13 @@ class EditorFragment : BaseFragment(R.layout.fragment_editor) {
                         textSize = data.editorFontSize.takeIf { it != -1 }?.toFloat(),
                         onAttachmentClick = { attachment ->
                             when (attachment.type) {
+                                Attachment.Type.HTML -> {
+                                    startActivity(
+                                        Intent(requireContext(), HtmlPreviewActivity::class.java).apply {
+                                            putExtra(HtmlPreviewActivity.ATTACHMENT, attachment)
+                                        }
+                                    )
+                                }
                                 Attachment.Type.GENERIC -> {
                                     val uri = attachment.uri(requireContext()) ?: return@renderInlineContent
                                     val mimeType = requireContext().contentResolver.getType(uri)
@@ -1096,6 +1112,92 @@ class EditorFragment : BaseFragment(R.layout.fragment_editor) {
             // Always add new tasks at the top (position 0)
             addTask(0)
         }
+
+        // SpeedDial tool button
+        fabTools.setOnClickListener {
+            if (isToolsExpanded) {
+                collapseToolOptions()
+            } else {
+                expandToolOptions()
+            }
+        }
+
+        fabTools.setOnLongClickListener {
+            isToolsExpanded = true
+            expandToolOptions()
+            true
+        }
+
+        fabToolAttach.setOnClickListener {
+            collapseToolOptions()
+            requestMediaLauncher.launch(null)
+        }
+
+        fabToolRecord.setOnClickListener {
+            collapseToolOptions()
+            clearFragmentResult(RECORD_CODE)
+            RecordAudioDialog().show(parentFragmentManager, null)
+        }
+
+        fabToolPhoto.setOnClickListener {
+            collapseToolOptions()
+            lifecycleScope.launch {
+                runCatching {
+                    takePhotoLauncher.launch(activityModel.createImageFile())
+                }.getOrElse { Log.e(TAG, "Cannot launch camera app", it) }
+            }
+        }
+
+        fabToolTag.setOnClickListener {
+            collapseToolOptions()
+            data.note?.let { note ->
+                findNavController().navigateSafely(
+                    EditorFragmentDirections.actionEditorToTags().setNoteId(note.id)
+                )
+            }
+        }
+    }
+
+    private fun expandToolOptions() = with(binding) {
+        isToolsExpanded = true
+        layoutToolOptions.isVisible = true
+        fabTools.setImageResource(R.drawable.ic_close)
+        // Animate sub-buttons
+        val childCount = layoutToolOptions.childCount
+        for (i in 0 until childCount) {
+            val child = layoutToolOptions.getChildAt(i)
+            child.alpha = 0f
+            child.scaleX = 0.5f
+            child.scaleY = 0.5f
+            child.animate()
+                .alpha(1f)
+                .scaleX(1f)
+                .scaleY(1f)
+                .setDuration(150)
+                .setStartDelay((childCount - i) * 50L)
+                .start()
+        }
+    }
+
+    private fun collapseToolOptions() = with(binding) {
+        isToolsExpanded = false
+        val childCount = layoutToolOptions.childCount
+        for (i in 0 until childCount) {
+            val child = layoutToolOptions.getChildAt(i)
+            child.animate()
+                .alpha(0f)
+                .scaleX(0.5f)
+                .scaleY(0.5f)
+                .setDuration(100)
+                .setStartDelay(i * 30L)
+                .withEndAction {
+                    if (i == childCount - 1) {
+                        layoutToolOptions.isVisible = false
+                    }
+                }
+                .start()
+        }
+        fabTools.setImageResource(R.drawable.ic_add)
     }
 
     private fun setupMarkdown() {
@@ -1236,6 +1338,149 @@ class EditorFragment : BaseFragment(R.layout.fragment_editor) {
         dialog.show()
     }
 
+    private fun showShareDialog(note: Note) {
+        val options = arrayOf("分享文字", "分享图片", "分享附件")
+
+        BaseDialog.build(requireContext()) {
+            setTitle("分享笔记")
+            setSingleChoiceItems(options, -1) { dialog, which ->
+                dialog.dismiss()
+                when (which) {
+                    0 -> shareNoteAsText(requireContext(), note)
+                    1 -> shareNoteAsImages(requireContext(), note)
+                    2 -> shareNoteAsFiles(requireContext(), note)
+                }
+            }
+            setNegativeButton("取消") { dialog, _ -> dialog.dismiss() }
+        }.show()
+    }
+
+    private fun showExportDialog(note: Note) {
+        val options = arrayOf("导出 PDF", "导出长截图", "导出 ZIP")
+
+        BaseDialog.build(requireContext()) {
+            setTitle("导出笔记")
+            setSingleChoiceItems(options, -1) { dialog, which ->
+                dialog.dismiss()
+                when (which) {
+                    0 -> showPdfExportDialog(note)
+                    1 -> showScreenshotExportDialog(note)
+                    2 -> {
+                        activityModel.notesToBackup = setOf(note)
+                        exportNotesLauncher.launch(null)
+                    }
+                }
+            }
+            setNegativeButton("取消") { dialog, _ -> dialog.dismiss() }
+        }.show()
+    }
+
+    private fun showPdfExportDialog(note: Note) {
+        val options = arrayOf("自定义样式", "直接渲染笔记内容")
+
+        BaseDialog.build(requireContext()) {
+            setTitle("导出 PDF")
+            setSingleChoiceItems(options, -1) { dialog, which ->
+                dialog.dismiss()
+                exportPdf(note, customStyle = which == 0)
+            }
+            setNegativeButton("取消") { dialog, _ -> dialog.dismiss() }
+        }.show()
+    }
+
+    private fun exportPdf(note: Note, customStyle: Boolean) {
+        lifecycleScope.launch {
+            val file = with(kotlinx.coroutines.Dispatchers.IO) {
+                ExportUtils.generatePdfDirect(requireContext(), note)
+            }
+            if (file != null) {
+                val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+                    setDataAndType(
+                        androidx.core.content.FileProvider.getUriForFile(
+                            requireContext(),
+                            "${requireContext().packageName}.provider",
+                            file
+                        ),
+                        "application/pdf"
+                    )
+                    addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                try {
+                    startActivity(intent)
+                } catch (_: Exception) {
+                    Toast.makeText(requireContext(), "没有可打开 PDF 的应用", Toast.LENGTH_SHORT).show()
+                }
+            } else {
+                Toast.makeText(requireContext(), "PDF 导出失败", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    private fun showScreenshotExportDialog(note: Note) {
+        val options = arrayOf("标准 (1x)", "高清 (2x)", "超清 (3x)")
+        val scales = floatArrayOf(1f, 2f, 3f)
+
+        BaseDialog.build(requireContext()) {
+            setTitle("选择缩放质量")
+            setSingleChoiceItems(options, -1) { dialog, which ->
+                dialog.dismiss()
+                exportLongScreenshot(note, scales[which])
+            }
+            setNegativeButton("取消") { dialog, _ -> dialog.dismiss() }
+        }.show()
+    }
+
+    private fun exportLongScreenshot(note: Note, scale: Float) {
+        val scrollView = binding.scrollView
+        lifecycleScope.launch {
+            val bitmap = with(kotlinx.coroutines.Dispatchers.IO) {
+                ExportUtils.createBitmapFromView(scrollView, scale)
+            }
+            val fileName = ExportUtils.generateScreenshotFileName(note)
+
+            // Show save or share dialog
+            val saveOptions = arrayOf("保存到下载", "分享")
+            BaseDialog.build(requireContext()) {
+                setTitle("长截图已生成")
+                setSingleChoiceItems(saveOptions, -1) { dialog, which ->
+                    dialog.dismiss()
+                    when (which) {
+                        0 -> {
+                            lifecycleScope.launch {
+                                val saved = with(kotlinx.coroutines.Dispatchers.IO) {
+                                    ExportUtils.saveBitmapToDownloads(requireContext(), bitmap, fileName)
+                                }
+                                Toast.makeText(
+                                    requireContext(),
+                                    if (saved) "已保存到 Download 目录" else "保存失败",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            }
+                        }
+                        1 -> {
+                            val cacheFile = java.io.File(requireContext().cacheDir, fileName)
+                            java.io.FileOutputStream(cacheFile).use { out ->
+                                bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, out)
+                            }
+                            val uri = androidx.core.content.FileProvider.getUriForFile(
+                                requireContext(),
+                                "${requireContext().packageName}.provider",
+                                cacheFile
+                            )
+                            val sendIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                                putExtra(android.content.Intent.EXTRA_STREAM, uri)
+                                type = "image/*"
+                                addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            }
+                            startActivity(android.content.Intent.createChooser(sendIntent, "分享长截图"))
+                        }
+                    }
+                }
+                setNegativeButton("取消") { dialog, _ -> dialog.dismiss() }
+            }.show()
+        }
+    }
+
     private fun showRemindersDialog(note: Note) {
         BottomSheet.show(getString(R.string.reminders), parentFragmentManager) {
             data.note?.reminders?.forEach { reminder ->
@@ -1277,26 +1522,35 @@ class EditorFragment : BaseFragment(R.layout.fragment_editor) {
         }
     }
 
-    private fun updateEditMode(inEditMode: Boolean = model.inEditMode, note: Note? = data.note) = with(binding) {
+    private fun updateEditMode(note: Note? = data.note) = with(binding) {
         // If the note is empty the fragment should open in edit mode by default
         val noteHasEmptyContent = hasNoteEmptyContent(note)
 
-        model.inEditMode = (inEditMode || noteHasEmptyContent) && !isNoteDeleted
+        val mode = when {
+            noteHasEmptyContent && !isNoteDeleted -> EditorViewModel.EditorMode.EDIT
+            isNoteDeleted -> EditorViewModel.EditorMode.READ
+            else -> model.editorMode
+        }
+        if (mode != model.editorMode) model.editorMode = mode
 
-        textViewTitlePreview.isVisible = !model.inEditMode
-        editTextTitle.isVisible = model.inEditMode
+        val isEdit = model.editorMode == EditorViewModel.EditorMode.EDIT
+        val isViewEdit = model.editorMode == EditorViewModel.EditorMode.VIEW_EDIT
+        val isRead = model.editorMode == EditorViewModel.EditorMode.READ
 
-        actionAddTask.isVisible = isList && model.inEditMode
+        textViewTitlePreview.isVisible = !isEdit
+        editTextTitle.isVisible = isEdit
+
+        actionAddTask.isVisible = isList && isEdit
         recyclerTasks.doOnPreDraw {
             for (pos in 0 until tasksAdapter.tasks.size) {
-                (recyclerTasks.findViewHolderForAdapterPosition(pos) as? TaskViewHolder)?.isEnabled = model.inEditMode
+                (recyclerTasks.findViewHolderForAdapterPosition(pos) as? TaskViewHolder)?.isEnabled = isEdit
             }
         }
 
         val isInline = note?.isInlineMode == true && !isList
-        textViewContentPreview.isVisible = !model.inEditMode && !isList && !isInline
-        containerContentPreviewInline.isVisible = !model.inEditMode && !isList && isInline
-        editTextContent.isVisible = model.inEditMode && !isList
+        textViewContentPreview.isVisible = isRead && !isList && !isInline
+        containerContentPreviewInline.isVisible = (isRead || isViewEdit) && !isList && isInline
+        editTextContent.isVisible = isEdit && !isList
 
         val shouldDisplayFAB = data.showFabChangeMode && !isNoteDeleted && !noteHasEmptyContent
         when {
@@ -1307,11 +1561,15 @@ class EditorFragment : BaseFragment(R.layout.fragment_editor) {
             else -> fabChangeMode.show()
         }
 
-        fabChangeMode.setImageResource(if (model.inEditMode) R.drawable.ic_show else R.drawable.ic_pencil)
+        fabChangeMode.setImageResource(when (model.editorMode) {
+            EditorViewModel.EditorMode.READ -> R.drawable.ic_pencil
+            EditorViewModel.EditorMode.VIEW_EDIT -> R.drawable.ic_show
+            EditorViewModel.EditorMode.EDIT -> R.drawable.ic_edit_view
+        })
         setMarkdownToolbarVisibility(note)
 
-        // Re-render inline content when switching to read mode
-        if (!model.inEditMode && isInline && note != null) {
+        // Re-render inline content when switching to read or view-edit mode
+        if (model.editorMode != EditorViewModel.EditorMode.EDIT && isInline && note != null) {
             containerContentPreviewInline.post {
                 renderInlineContent(
                     containerContentPreviewInline,
@@ -1321,6 +1579,13 @@ class EditorFragment : BaseFragment(R.layout.fragment_editor) {
                     textSize = data.editorFontSize.takeIf { it != -1 }?.toFloat(),
                     onAttachmentClick = { attachment ->
                         when (attachment.type) {
+                            Attachment.Type.HTML -> {
+                                startActivity(
+                                    Intent(requireContext(), HtmlPreviewActivity::class.java).apply {
+                                        putExtra(HtmlPreviewActivity.ATTACHMENT, attachment)
+                                    }
+                                )
+                            }
                             Attachment.Type.GENERIC -> {
                                 val uri = attachment.uri(requireContext()) ?: return@renderInlineContent
                                 val mimeType = requireContext().contentResolver.getType(uri)
@@ -1363,6 +1628,12 @@ class EditorFragment : BaseFragment(R.layout.fragment_editor) {
                         if (newContent != currentNote.content) {
                             model.setNoteContent(newContent)
                         }
+                    },
+                    isViewEditMode = isViewEdit,
+                    onViewEditTap = {
+                        model.editorMode = EditorViewModel.EditorMode.EDIT
+                        updateEditMode()
+                        requestFocusForFields(true)
                     },
                 )
             }

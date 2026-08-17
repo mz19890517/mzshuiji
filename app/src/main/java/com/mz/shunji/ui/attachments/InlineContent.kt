@@ -132,6 +132,8 @@ fun renderInlineContent(
     onAttachmentsReordered: ((List<Attachment>) -> Unit)? = null,
     onAttachmentDropped: ((sourcePath: String, targetPath: String, insertBefore: Boolean) -> Unit)? = null,
     isEditMode: Boolean = false,
+    isViewEditMode: Boolean = false,
+    onViewEditTap: (() -> Unit)? = null,
 ) {
     container.removeAllViews()
 
@@ -201,6 +203,13 @@ fun renderInlineContent(
                 } else {
                     textView.text = segment.text
                 }
+
+                if (isViewEditMode && !isEditMode && onViewEditTap != null) {
+                    textView.isClickable = true
+                    textView.isFocusable = true
+                    textView.setOnClickListener { onViewEditTap() }
+                }
+
                 container.addView(
                     textView,
                     LinearLayout.LayoutParams(
@@ -310,6 +319,7 @@ fun renderInlineContent(
                 val heightDp = when (segment.attachment.type) {
                     Attachment.Type.AUDIO -> 60
                     Attachment.Type.GENERIC -> 36
+                    Attachment.Type.HTML -> 36
                     else -> maxAttachmentHeight
                 }
 
@@ -450,7 +460,7 @@ private fun bindInlineAttachment(
             container.addView(wrapper, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         }
 
-        Attachment.Type.GENERIC -> {
+        Attachment.Type.GENERIC, Attachment.Type.HTML -> {
             binding.imageView.isVisible = false
             binding.indicatorAttachmentType.isVisible = false
             binding.textView.isVisible = false

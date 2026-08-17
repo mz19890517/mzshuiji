@@ -3,6 +3,7 @@ package com.mz.shunji.ui.utils
 import android.content.ClipData
 import android.content.Context
 import android.content.Intent
+import android.widget.Toast
 import androidx.core.content.ContextCompat
 import com.mz.shunji.R
 import com.mz.shunji.data.model.Attachment
@@ -64,6 +65,62 @@ fun shareAttachment(context: Context, attachment: Attachment) {
         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
     }
 
+    val chooser = Intent.createChooser(sendIntent, context.getString(R.string.action_share))
+    ContextCompat.startActivity(context, chooser, null)
+}
+
+fun shareNoteAsText(context: Context, note: Note) {
+    val textContent = if (note.isList) note.taskListToString(withCheckmarks = true) else note.content
+    val sendIntent = Intent(Intent.ACTION_SEND).apply {
+        putExtra(Intent.EXTRA_TITLE, note.title)
+        putExtra(Intent.EXTRA_TEXT, if (note.title.isNotEmpty()) "${note.title}\n\n${textContent}" else textContent)
+        type = "text/plain"
+    }
+    val chooser = Intent.createChooser(sendIntent, context.getString(R.string.action_share))
+    ContextCompat.startActivity(context, chooser, null)
+}
+
+fun shareNoteAsImages(context: Context, note: Note) {
+    val imageAttachments = note.attachments.filter { it.type == Attachment.Type.IMAGE }
+    if (imageAttachments.isEmpty()) {
+        Toast.makeText(context, "笔记中没有图片", Toast.LENGTH_SHORT).show()
+        return
+    }
+    val uris = imageAttachments.mapNotNull { it.uri(context) }
+    if (uris.isEmpty()) return
+
+    val sendIntent = Intent(Intent.ACTION_SEND_MULTIPLE).apply {
+        putExtra(Intent.EXTRA_TITLE, note.title)
+        putExtra(Intent.EXTRA_TEXT, note.title)
+        type = "image/*"
+        putParcelableArrayListExtra(Intent.EXTRA_STREAM, ArrayList(uris))
+        clipData = ClipData("", arrayOf("image/*"), ClipData.Item(uris.first())).apply {
+            (1 until uris.size).forEach { addItem(ClipData.Item(uris[it])) }
+        }
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    }
+    val chooser = Intent.createChooser(sendIntent, context.getString(R.string.action_share))
+    ContextCompat.startActivity(context, chooser, null)
+}
+
+fun shareNoteAsFiles(context: Context, note: Note) {
+    if (note.attachments.isEmpty()) {
+        Toast.makeText(context, "笔记中没有附件", Toast.LENGTH_SHORT).show()
+        return
+    }
+    val uris = note.attachments.mapNotNull { it.uri(context) }
+    if (uris.isEmpty()) return
+
+    val sendIntent = Intent(Intent.ACTION_SEND_MULTIPLE).apply {
+        putExtra(Intent.EXTRA_TITLE, note.title)
+        putExtra(Intent.EXTRA_TEXT, note.title)
+        type = "*/*"
+        putParcelableArrayListExtra(Intent.EXTRA_STREAM, ArrayList(uris))
+        clipData = ClipData("", arrayOf("*/*"), ClipData.Item(uris.first())).apply {
+            (1 until uris.size).forEach { addItem(ClipData.Item(uris[it])) }
+        }
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    }
     val chooser = Intent.createChooser(sendIntent, context.getString(R.string.action_share))
     ContextCompat.startActivity(context, chooser, null)
 }

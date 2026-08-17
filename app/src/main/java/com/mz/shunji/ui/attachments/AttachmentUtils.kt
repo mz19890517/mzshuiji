@@ -32,6 +32,7 @@ fun Attachment.Companion.fromUri(context: Context, uri: Uri): Attachment {
         mimeType.startsWith("image") -> Attachment.Type.IMAGE
         mimeType.startsWith("video") -> Attachment.Type.VIDEO
         mimeType.startsWith("audio") -> Attachment.Type.AUDIO
+        mimeType == "text/html" || mimeType == "application/xhtml+xml" -> Attachment.Type.HTML
         else -> Attachment.Type.GENERIC
     }
     return Attachment(type, uri.toString(), description)
@@ -65,4 +66,22 @@ fun getAlbumArtBitmap(context: Context, uri: Uri): Bitmap? {
     retriever.release()
 
     return result
+}
+
+fun copyUriToFile(context: Context, uri: Uri, targetFile: File): Boolean {
+    return try {
+        context.contentResolver.openInputStream(uri)?.use { input ->
+            targetFile.parentFile?.mkdirs()
+            targetFile.outputStream().use { output ->
+                input.copyTo(output)
+            }
+            true
+        } ?: false
+    } catch (_: Exception) {
+        false
+    }
+}
+
+fun getHtmlBaseDir(context: Context): File {
+    return File(context.filesDir, "html").also { it.mkdirs() }
 }

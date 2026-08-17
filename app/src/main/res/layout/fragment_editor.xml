@@ -165,6 +165,73 @@
             app:layout_constraintEnd_toEndOf="parent"
             style="@style/Widget.Custom.FloatingActionButton"/>
 
+    <!-- Tool options container (SpeedDial) -->
+    <LinearLayout
+            android:id="@+id/layout_tool_options"
+            android:orientation="vertical"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_margin="16dp"
+            android:gravity="bottom|end"
+            android:visibility="gone"
+            app:layout_constraintBottom_toTopOf="@id/fab_tools"
+            app:layout_constraintStart_toStartOf="parent">
+
+        <com.google.android.material.floatingactionbutton.FloatingActionButton
+                android:id="@+id/fab_tool_tag"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="8dp"
+                android:src="@drawable/ic_tag"
+                android:contentDescription="标签"
+                app:fabSize="mini"
+                app:backgroundTint="?attr/colorBackground"
+                app:tint="?attr/colorOnSurface"/>
+
+        <com.google.android.material.floatingactionbutton.FloatingActionButton
+                android:id="@+id/fab_tool_photo"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="8dp"
+                android:src="@drawable/ic_camera"
+                android:contentDescription="拍照"
+                app:fabSize="mini"
+                app:backgroundTint="?attr/colorBackground"
+                app:tint="?attr/colorOnSurface"/>
+
+        <com.google.android.material.floatingactionbutton.FloatingActionButton
+                android:id="@+id/fab_tool_record"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="8dp"
+                android:src="@drawable/ic_microphone"
+                android:contentDescription="录音"
+                app:fabSize="mini"
+                app:backgroundTint="?attr/colorBackground"
+                app:tint="?attr/colorOnSurface"/>
+
+        <com.google.android.material.floatingactionbutton.FloatingActionButton
+                android:id="@+id/fab_tool_attach"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="8dp"
+                android:src="@drawable/ic_attachment"
+                android:contentDescription="附文件"
+                app:fabSize="mini"
+                app:backgroundTint="?attr/colorBackground"
+                app:tint="?attr/colorOnSurface"/>
+    </LinearLayout>
+
+    <com.google.android.material.floatingactionbutton.FloatingActionButton
+            android:id="@+id/fab_tools"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_margin="16dp"
+            android:src="@drawable/ic_add"
+            app:layout_constraintBottom_toTopOf="@id/container_bottom_toolbar"
+            app:layout_constraintStart_toStartOf="parent"
+            style="@style/Widget.Custom.FloatingActionButton"/>
+
     <LinearLayout
             android:id="@+id/container_bottom_toolbar"
             android:layout_width="match_parent"
