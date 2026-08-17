@@ -32,7 +32,7 @@
 
 ### 本地构建
 
-签名文件：`mzshunji-keystore.zip`（密码：`mz19890517`）
+签名文件：`mzshunji-keystore.zip`（密码私有）
 
 ## 技术信息
 
