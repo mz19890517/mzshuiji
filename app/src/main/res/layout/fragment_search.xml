@@ -23,7 +23,7 @@
                 app:titleTextAppearance="@style/TextAppearance.Custom.Title"
                 app:contentInsetStartWithNavigation="0dp">
 
-            <org.qosp.notes.ui.utils.views.ExtendedEditText
+            <com.mz.shunji.ui.utils.views.ExtendedEditText
                     android:id="@+id/edit_text_search"
                     android:hint="@string/search_hint"
                     android:background="@null"

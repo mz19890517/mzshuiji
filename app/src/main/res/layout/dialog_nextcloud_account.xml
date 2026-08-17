@@ -20,7 +20,7 @@
             app:boxStrokeWidthFocused="0dp"
             app:boxStrokeWidth="0dp"
             app:hintEnabled="false">
-        <org.qosp.notes.ui.utils.views.ExtendedEditText
+        <com.mz.shunji.ui.utils.views.ExtendedEditText
                 android:id="@+id/edit_text_username"
                 android:hint="@string/hint_username"
                 android:textAppearance="@style/TextAppearance.MaterialComponents.Subtitle1"

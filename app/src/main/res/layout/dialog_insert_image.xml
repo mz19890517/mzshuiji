@@ -5,7 +5,7 @@
               android:orientation="vertical"
               android:animateLayoutChanges="true">
 
-    <org.qosp.notes.ui.utils.views.ExtendedEditText
+    <com.mz.shunji.ui.utils.views.ExtendedEditText
             android:id="@+id/edit_text_image_description"
             android:hint="@string/hint_image_description"
             android:textAppearance="@style/TextAppearance.MaterialComponents.Subtitle1"

@@ -4,7 +4,7 @@
               android:layout_height="match_parent"
               android:animateLayoutChanges="true">
 
-    <org.qosp.notes.ui.utils.views.ExtendedEditText
+    <com.mz.shunji.ui.utils.views.ExtendedEditText
             android:id="@+id/edit_text_description"
             android:hint="@string/attachments_hint_description"
             android:textAppearance="@style/TextAppearance.MaterialComponents.Subtitle1"

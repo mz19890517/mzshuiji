@@ -15,11 +15,11 @@ android {
     namespace = "org.qosp.notes"
 
     defaultConfig {
-        applicationId = "io.github.quillpad"
+        applicationId = "com.mz.shunji"
         minSdk = 24
         targetSdk = 35
-        versionCode = 54
-        versionName = "1.5.12"
+        versionCode = 1
+        versionName = "1.1.0"
 
         testInstrumentationRunner = "org.qosp.notes.TestRunner"
 

@@ -41,7 +41,7 @@
             app:layout_constraintTop_toTopOf="parent"
             app:layout_constraintHorizontal_bias="0.0"/>
 
-    <org.qosp.notes.ui.utils.views.ExtendedEditText
+    <com.mz.shunji.ui.utils.views.ExtendedEditText
             android:id="@+id/edit_text"
             android:hint="@string/action_add_task"
             android:background="@null"

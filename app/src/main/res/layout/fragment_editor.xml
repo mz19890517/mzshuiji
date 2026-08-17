@@ -63,7 +63,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"/>
 
-            <org.qosp.notes.ui.utils.views.ExtendedEditText
+            <com.mz.shunji.ui.utils.views.ExtendedEditText
                     android:id="@+id/edit_text_title"
                     android:textAppearance="@style/TextAppearance.Custom.Title"
                     android:hint="@string/editor_hint_title"
@@ -85,7 +85,7 @@
                     android:layout_marginTop="16dp"
                     android:layout_marginHorizontal="16dp"/>
 
-            <org.qosp.notes.ui.utils.views.ExtendedEditText
+            <com.mz.shunji.ui.utils.views.ExtendedEditText
                     android:id="@+id/edit_text_content"
                     android:textAppearance="@style/TextAppearance.MaterialComponents.Body1"
                     android:hint="@string/editor_hint_content"
@@ -104,6 +104,14 @@
                     android:layout_height="wrap_content"
                     android:visibility="gone"
                     android:gravity="top|start"
+                    android:layout_margin="16dp"/>
+
+            <LinearLayout
+                    android:id="@+id/container_content_preview_inline"
+                    android:orientation="vertical"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:visibility="gone"
                     android:layout_margin="16dp"/>
 
             <androidx.appcompat.widget.AppCompatTextView

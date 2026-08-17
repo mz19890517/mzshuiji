@@ -5,7 +5,7 @@
               android:orientation="vertical"
               android:animateLayoutChanges="true">
 
-    <org.qosp.notes.ui.utils.views.ExtendedEditText
+    <com.mz.shunji.ui.utils.views.ExtendedEditText
             android:id="@+id/edit_text_columns"
             android:hint="@string/hint_number_columns"
             android:textAppearance="@style/TextAppearance.MaterialComponents.Subtitle1"

@@ -71,7 +71,7 @@
                 android:resource="@xml/shortcuts" />
         </activity>
 
-        <activity android:name="org.qosp.notes.ui.media.MediaActivity" />
+        <activity android:name="com.mz.shunji.ui.media.MediaActivity" />
 
         <!-- Widget Receiver -->
         <receiver
@@ -121,17 +121,17 @@
         </receiver>
 
         <service
-            android:name="org.qosp.notes.ui.media.MusicService"
+            android:name="com.mz.shunji.ui.media.MusicService"
             android:exported="false"
             android:foregroundServiceType="mediaPlayback" />
 
         <service
-            android:name="org.qosp.notes.ui.recorder.RecorderService"
+            android:name="com.mz.shunji.ui.recorder.RecorderService"
             android:exported="false"
             android:foregroundServiceType="microphone" />
 
         <service
-            android:name="org.qosp.notes.components.backup.BackupService"
+            android:name="com.mz.shunji.components.backup.BackupService"
             android:exported="false"
             android:foregroundServiceType="dataSync" />
     </application>

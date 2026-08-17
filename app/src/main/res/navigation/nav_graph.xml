@@ -8,7 +8,7 @@
 
     <fragment
             android:id="@+id/fragment_main"
-            android:name="org.qosp.notes.ui.main.MainFragment"
+            android:name="com.mz.shunji.ui.main.MainFragment"
             android:layout="@layout/fragment_main">
         <action
                 android:id="@+id/action_main_to_editor"
@@ -20,7 +20,7 @@
 
     <fragment
             android:id="@+id/fragment_archive"
-            android:name="org.qosp.notes.ui.archive.ArchiveFragment"
+            android:name="com.mz.shunji.ui.archive.ArchiveFragment"
             android:layout="@layout/fragment_archive">
         <action
                 android:id="@+id/action_archive_to_editor"
@@ -32,7 +32,7 @@
 
     <fragment
             android:id="@+id/fragment_deleted"
-            android:name="org.qosp.notes.ui.deleted.DeletedFragment"
+            android:name="com.mz.shunji.ui.deleted.DeletedFragment"
             android:layout="@layout/fragment_deleted">
 
         <action
@@ -45,7 +45,7 @@
 
     <fragment
             android:id="@+id/fragment_notebook"
-            android:name="org.qosp.notes.ui.notebooks.NotebookFragment"
+            android:name="com.mz.shunji.ui.notebooks.NotebookFragment"
             android:layout="@layout/fragment_main">
         <action
                 android:id="@+id/action_notebook_to_editor"
@@ -65,7 +65,7 @@
 
     <fragment
             android:id="@+id/fragment_editor"
-            android:name="org.qosp.notes.ui.editor.EditorFragment"
+            android:name="com.mz.shunji.ui.editor.EditorFragment"
             android:label=""
             android:layout="@layout/fragment_editor">
         <deepLink app:uri="quillpad://notes/{transitionName}?newNoteIsList={newNoteIsList}" />
@@ -93,7 +93,7 @@
                   android:defaultValue=""
                   app:argType="string"/>
         <argument android:name="newNoteAttachments"
-                  app:argType="org.qosp.notes.data.model.Attachment[]"
+                  app:argType="com.mz.shunji.data.model.Attachment[]"
                   android:defaultValue="@null"
                   app:nullable="true"/>
 
@@ -101,7 +101,7 @@
 
     <fragment
             android:id="@+id/fragment_tags"
-            android:name="org.qosp.notes.ui.tags.TagsFragment">
+            android:name="com.mz.shunji.ui.tags.TagsFragment">
         <action
                 android:id="@+id/actionTagsToSearch"
                 app:destination="@+id/fragment_search"/>
@@ -113,25 +113,25 @@
 
     <fragment
             android:id="@+id/fragment_manage_notebooks"
-            android:name="org.qosp.notes.ui.notebooks.ManageNotebooksFragment"
+            android:name="com.mz.shunji.ui.notebooks.ManageNotebooksFragment"
             android:layout="@layout/fragment_manage_notebooks">
     </fragment>
 
     <fragment
             android:id="@+id/fragment_about"
-            android:name="org.qosp.notes.ui.about.AboutFragment"
+            android:name="com.mz.shunji.ui.about.AboutFragment"
             android:layout="@layout/fragment_about"/>
 
     <fragment
             android:id="@+id/fragment_settings"
-            android:name="org.qosp.notes.ui.settings.SettingsFragment"
+            android:name="com.mz.shunji.ui.settings.SettingsFragment"
             android:layout="@layout/fragment_settings">
         <action android:id="@+id/action_main_settings_to_sync" app:destination="@id/fragment_sync_settings"/>
     </fragment>
 
     <fragment
             android:id="@+id/fragment_search"
-            android:name="org.qosp.notes.ui.search.SearchFragment"
+            android:name="com.mz.shunji.ui.search.SearchFragment"
             android:layout="@layout/fragment_search">
         <argument
                 android:name="searchQuery"
@@ -144,7 +144,7 @@
 
     <fragment
         android:id="@+id/fragment_sync_settings"
-        android:name="org.qosp.notes.ui.sync.SyncSettingsFragment"
+        android:name="com.mz.shunji.ui.sync.SyncSettingsFragment"
         android:layout="@layout/fragment_sync_settings"/>
 
 </navigation>
