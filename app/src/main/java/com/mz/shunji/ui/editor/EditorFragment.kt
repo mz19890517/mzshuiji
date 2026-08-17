@@ -1452,8 +1452,7 @@ class EditorFragment : BaseFragment(R.layout.fragment_editor) {
         }
     }
 
-    private fun updateEditMode(note: Note? = data.note) {
-        val binding = _binding ?: return
+    private fun updateEditMode(note: Note? = data.note) = with(binding) {
         // If the note is empty the fragment should open in edit mode by default
         val noteHasEmptyContent = hasNoteEmptyContent(note)
 
@@ -1468,31 +1467,31 @@ class EditorFragment : BaseFragment(R.layout.fragment_editor) {
         val isViewEdit = model.editorMode == EditorViewModel.EditorMode.VIEW_EDIT
         val isRead = model.editorMode == EditorViewModel.EditorMode.READ
 
-        binding.textViewTitlePreview.isVisible = !isEdit
-        binding.editTextTitle.isVisible = isEdit
+        textViewTitlePreview.isVisible = !isEdit
+        editTextTitle.isVisible = isEdit
 
-        binding.actionAddTask.isVisible = isList && isEdit
-        binding.recyclerTasks.doOnPreDraw {
+        actionAddTask.isVisible = isList && isEdit
+        recyclerTasks.doOnPreDraw {
             for (pos in 0 until tasksAdapter.tasks.size) {
-                (binding.recyclerTasks.findViewHolderForAdapterPosition(pos) as? TaskViewHolder)?.isEnabled = isEdit
+                (recyclerTasks.findViewHolderForAdapterPosition(pos) as? TaskViewHolder)?.isEnabled = isEdit
             }
         }
 
         val isInline = note?.isInlineMode == true && !isList
-        binding.textViewContentPreview.isVisible = isRead && !isList && !isInline
-        binding.containerContentPreviewInline.isVisible = (isRead || isViewEdit) && !isList && isInline
-        binding.editTextContent.isVisible = isEdit && !isList
+        textViewContentPreview.isVisible = isRead && !isList && !isInline
+        containerContentPreviewInline.isVisible = (isRead || isViewEdit) && !isList && isInline
+        editTextContent.isVisible = isEdit && !isList
 
         val shouldDisplayFAB = data.showFabChangeMode && !isNoteDeleted && !noteHasEmptyContent
         when {
-            binding.fabChangeMode.isVisible == shouldDisplayFAB -> { /* FAB is already like it should be, no reason to animate */
+            fabChangeMode.isVisible == shouldDisplayFAB -> { /* FAB is already like it should be, no reason to animate */
             }
 
-            binding.fabChangeMode.isVisible && !shouldDisplayFAB -> binding.fabChangeMode.hide()
-            else -> binding.fabChangeMode.show()
+            fabChangeMode.isVisible && !shouldDisplayFAB -> fabChangeMode.hide()
+            else -> fabChangeMode.show()
         }
 
-        binding.fabChangeMode.setImageResource(when (model.editorMode) {
+        fabChangeMode.setImageResource(when (model.editorMode) {
             EditorViewModel.EditorMode.READ -> R.drawable.ic_pencil
             EditorViewModel.EditorMode.VIEW_EDIT -> R.drawable.ic_show
             EditorViewModel.EditorMode.EDIT -> R.drawable.ic_edit_view
@@ -1501,45 +1500,51 @@ class EditorFragment : BaseFragment(R.layout.fragment_editor) {
 
         // Re-render inline content when switching to read or view-edit mode
         if (model.editorMode != EditorViewModel.EditorMode.EDIT && isInline && note != null) {
-            binding.containerContentPreviewInline.post {
+            containerContentPreviewInline.post {
                 renderCurrentInlineContent(note)
             }
         }
     }
 
     private fun renderCurrentInlineContent(note: Note) {
-        val binding = _binding ?: return
         val isViewEdit = model.editorMode == EditorViewModel.EditorMode.VIEW_EDIT
+        val container = binding.containerContentPreviewInline
+        val ctx = requireContext()
+        val ts = data.editorFontSize.takeIf { it != -1 }?.toFloat()
+        val mw = markwon
+        val content = note.content
+
+        val clickHandler = fun(a: Attachment) { onInlineAttachmentClick(a) }
+        val menuHandler = fun(a: Attachment) { showInlineAttachmentMenu(a) }
+        val longClickHandler = fun(@Suppress("UNUSED_PARAMETER") a: Attachment): Boolean { return true }
+        val reorderHandler = fun(newAttachments: List<Attachment>) {
+            val markers = newAttachments.joinToString("") { InlineContent.markerFor(it) }
+            val newContent = InlineContent.stripMarkers(content).let { stripped ->
+                if (stripped.isBlank()) markers else markers + stripped
+            }
+            model.reorderAttachments(newAttachments, newContent.trim())
+        }
+        val dropHandler = fun(sourcePath: String, targetPath: String, insertBefore: Boolean) {
+            val newContent = InlineContent.rearrangeMarkers(content, sourcePath, targetPath, insertBefore)
+            if (newContent != content) {
+                model.setNoteContent(newContent)
+            }
+        }
+        val tapHandler = fun() {
+            model.editorMode = EditorViewModel.EditorMode.EDIT
+            updateEditMode()
+            requestFocusForFields(true)
+        }
+
         renderInlineContent(
-            binding.containerContentPreviewInline,
-            requireContext(),
-            note,
-            markwon,
-            textSize = data.editorFontSize.takeIf { it != -1 }?.toFloat(),
-            onAttachmentClick = { attachment -> onInlineAttachmentClick(attachment) },
-            onAttachmentMenuClick = { attachment -> showInlineAttachmentMenu(attachment) },
-            onAttachmentLongClick = { true },
-            onAttachmentsReordered = { newAttachments ->
-                val markers = newAttachments.joinToString("") { InlineContent.markerFor(it) }
-                val newContent = InlineContent.stripMarkers(note.content).let { stripped ->
-                    if (stripped.isBlank()) markers else markers + stripped
-                }
-                model.reorderAttachments(newAttachments, newContent.trim())
-            },
-            onAttachmentDropped = { sourcePath, targetPath, insertBefore ->
-                val newContent = InlineContent.rearrangeMarkers(note.content, sourcePath, targetPath, insertBefore)
-                if (newContent != note.content) {
-                    model.setNoteContent(newContent)
-                }
-            },
+            container, ctx, note, mw, textSize = ts,
+            onAttachmentClick = clickHandler,
+            onAttachmentMenuClick = menuHandler,
+            onAttachmentLongClick = longClickHandler,
+            onAttachmentsReordered = reorderHandler,
+            onAttachmentDropped = dropHandler,
             isViewEditMode = isViewEdit,
-            onViewEditTap = {
-                view?.post {
-                    model.editorMode = EditorViewModel.EditorMode.EDIT
-                    updateEditMode()
-                    requestFocusForFields(true)
-                }
-            },
+            onViewEditTap = tapHandler,
         )
     }
 
