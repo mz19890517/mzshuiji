@@ -106,7 +106,7 @@ object ExportUtils {
         return lines
     }
 
-    fun createBitmapFromView scrollView: ScrollView, scale: Float = 1f: Bitmap {
+    fun createBitmapFromView(scrollView: ScrollView, scale: Float = 1f): Bitmap {
         val totalHeight = scrollView.getChildAt(0).height
         val width = scrollView.width
 

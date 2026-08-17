@@ -94,6 +94,10 @@ class AttachmentViewHolder(
                 imageView.setColorFilter(Color.WHITE)
                 imageView.load(R.drawable.ic_file)
             }
+            Attachment.Type.HTML -> {
+                imageView.setColorFilter(Color.WHITE)
+                imageView.load(R.drawable.ic_web)
+            }
         }
     }
 

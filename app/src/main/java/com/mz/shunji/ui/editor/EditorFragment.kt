@@ -180,18 +180,6 @@ class EditorFragment : BaseFragment(R.layout.fragment_editor) {
         activityModel.tempPhotoUri = null
     }
 
-    private var pendingHtmlUri: Uri? = null
-    private var pendingAssociatedUris: MutableList<Uri> = mutableListOf()
-
-    private val requestAssociatedFilesLauncher = registerForActivityResult(ChooseFilesContract) { uris ->
-        if (uris.isEmpty() || pendingHtmlUri == null) {
-            pendingHtmlUri = null
-            return@registerForActivityResult
-        }
-        pendingAssociatedUris.addAll(uris)
-        copyHtmlWithAssociatedFiles()
-    }
-
     private val itemTouchHelper = ItemTouchHelper(object : ItemTouchHelper.SimpleCallback(UP or DOWN, LEFT or RIGHT) {
         override fun isLongPressDragEnabled() = false
 
