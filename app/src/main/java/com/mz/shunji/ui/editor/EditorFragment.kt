@@ -944,65 +944,7 @@ class EditorFragment : BaseFragment(R.layout.fragment_editor) {
             if (isInline) {
                 containerContentPreviewInline.isVisible = model.editorMode != EditorViewModel.EditorMode.EDIT
                 if (model.editorMode != EditorViewModel.EditorMode.EDIT) {
-                    renderInlineContent(
-                        containerContentPreviewInline,
-                        requireContext(),
-                        data.note,
-                        markwon,
-                        textSize = data.editorFontSize.takeIf { it != -1 }?.toFloat(),
-                        onAttachmentClick = { attachment ->
-                            when (attachment.type) {
-                                Attachment.Type.HTML -> {
-                                    startActivity(
-                                        Intent(requireContext(), HtmlPreviewActivity::class.java).apply {
-                                            putExtra(HtmlPreviewActivity.ATTACHMENT, attachment)
-                                        }
-                                    )
-                                }
-                                Attachment.Type.GENERIC -> {
-                                    val uri = attachment.uri(requireContext()) ?: return@renderInlineContent
-                                    val mimeType = requireContext().contentResolver.getType(uri)
-                                    val intent = Intent(Intent.ACTION_VIEW).apply {
-                                        setDataAndType(uri, mimeType ?: "*/*")
-                                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                    }
-                                    try {
-                                        startActivity(intent)
-                                    } catch (_: Exception) {
-                                        Toast.makeText(requireContext(), "没有可打开此文件的应用", Toast.LENGTH_SHORT).show()
-                                    }
-                                }
-                                else -> {
-                                    startActivity(
-                                        Intent(requireContext(), MediaActivity::class.java).apply {
-                                            putExtra(MediaActivity.ATTACHMENT, attachment)
-                                        }
-                                    )
-                                }
-                            }
-                        },
-                        onAttachmentMenuClick = { attachment ->
-                            showInlineAttachmentMenu(attachment)
-                        },
-                        onAttachmentLongClick = { attachment ->
-                            true
-                        },
-                        onAttachmentsReordered = { newAttachments ->
-                            val note = data.note ?: return@renderInlineContent
-                            val markers = newAttachments.joinToString("") { InlineContent.markerFor(it) }
-                            val newContent = InlineContent.stripMarkers(note.content).let { stripped ->
-                                if (stripped.isBlank()) markers else markers + stripped
-                            }
-                            model.reorderAttachments(newAttachments, newContent.trim())
-                        },
-                        onAttachmentDropped = { sourcePath, targetPath, insertBefore ->
-                            val note = data.note ?: return@renderInlineContent
-                            val newContent = InlineContent.rearrangeMarkers(note.content, sourcePath, targetPath, insertBefore)
-                            if (newContent != note.content) {
-                                model.setNoteContent(newContent)
-                            }
-                        },
-                    )
+                    renderCurrentInlineContent(data.note)
                 }
             } else {
                 containerContentPreviewInline.isVisible = false
@@ -1559,70 +1501,71 @@ class EditorFragment : BaseFragment(R.layout.fragment_editor) {
         // Re-render inline content when switching to read or view-edit mode
         if (model.editorMode != EditorViewModel.EditorMode.EDIT && isInline && note != null) {
             containerContentPreviewInline.post {
-                renderInlineContent(
-                    containerContentPreviewInline,
-                    requireContext(),
-                    note,
-                    markwon,
-                    textSize = data.editorFontSize.takeIf { it != -1 }?.toFloat(),
-                    onAttachmentClick = { attachment ->
-                        when (attachment.type) {
-                            Attachment.Type.HTML -> {
-                                startActivity(
-                                    Intent(requireContext(), HtmlPreviewActivity::class.java).apply {
-                                        putExtra(HtmlPreviewActivity.ATTACHMENT, attachment)
-                                    }
-                                )
-                            }
-                            Attachment.Type.GENERIC -> {
-                                val uri = attachment.uri(requireContext()) ?: return@renderInlineContent
-                                val mimeType = requireContext().contentResolver.getType(uri)
-                                val intent = Intent(Intent.ACTION_VIEW).apply {
-                                    setDataAndType(uri, mimeType ?: "*/*")
-                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                }
-                                try {
-                                    startActivity(intent)
-                                } catch (_: Exception) {
-                                    Toast.makeText(requireContext(), "没有可打开此文件的应用", Toast.LENGTH_SHORT).show()
-                                }
-                            }
-                            else -> {
-                                startActivity(
-                                    Intent(requireContext(), MediaActivity::class.java).apply {
-                                        putExtra(MediaActivity.ATTACHMENT, attachment)
-                                    }
-                                )
-                            }
-                        }
-                    },
-                    onAttachmentMenuClick = { attachment ->
-                        showInlineAttachmentMenu(attachment)
-                    },
-                    onAttachmentLongClick = { attachment ->
-                        true
-                    },
-                    onAttachmentsReordered = { newAttachments ->
-                        val currentNote = data.note ?: return@renderInlineContent
-                        val markers = newAttachments.joinToString("") { InlineContent.markerFor(it) }
-                        val newContent = InlineContent.stripMarkers(currentNote.content).let { stripped ->
-                            if (stripped.isBlank()) markers else markers + stripped
-                        }
-                        model.reorderAttachments(newAttachments, newContent.trim())
-                    },
-                    onAttachmentDropped = { sourcePath, targetPath, insertBefore ->
-                        val currentNote = data.note ?: return@renderInlineContent
-                        val newContent = InlineContent.rearrangeMarkers(currentNote.content, sourcePath, targetPath, insertBefore)
-                        if (newContent != currentNote.content) {
-                            model.setNoteContent(newContent)
-                        }
-                    },
-                    isViewEditMode = isViewEdit,
-                    onViewEditTap = {
-                        model.editorMode = EditorViewModel.EditorMode.EDIT
-                        binding.root.post { updateEditMode() }
-                        requestFocusForFields(true)
-                    },
+                renderCurrentInlineContent(note)
+            }
+        }
+    }
+
+    private fun renderCurrentInlineContent(note: Note) = with(binding) {
+        val isViewEdit = model.editorMode == EditorViewModel.EditorMode.VIEW_EDIT
+        renderInlineContent(
+            containerContentPreviewInline,
+            requireContext(),
+            note,
+            markwon,
+            textSize = data.editorFontSize.takeIf { it != -1 }?.toFloat(),
+            onAttachmentClick = { attachment -> onInlineAttachmentClick(attachment) },
+            onAttachmentMenuClick = { attachment -> showInlineAttachmentMenu(attachment) },
+            onAttachmentLongClick = { true },
+            onAttachmentsReordered = { newAttachments ->
+                val markers = newAttachments.joinToString("") { InlineContent.markerFor(it) }
+                val newContent = InlineContent.stripMarkers(note.content).let { stripped ->
+                    if (stripped.isBlank()) markers else markers + stripped
+                }
+                model.reorderAttachments(newAttachments, newContent.trim())
+            },
+            onAttachmentDropped = { sourcePath, targetPath, insertBefore ->
+                val newContent = InlineContent.rearrangeMarkers(note.content, sourcePath, targetPath, insertBefore)
+                if (newContent != note.content) {
+                    model.setNoteContent(newContent)
+                }
+            },
+            isViewEditMode = isViewEdit,
+            onViewEditTap = {
+                model.editorMode = EditorViewModel.EditorMode.EDIT
+                updateEditMode()
+                requestFocusForFields(true)
+            },
+        )
+    }
+
+    private fun onInlineAttachmentClick(attachment: Attachment) {
+        when (attachment.type) {
+            Attachment.Type.HTML -> {
+                startActivity(
+                    Intent(requireContext(), HtmlPreviewActivity::class.java).apply {
+                        putExtra(HtmlPreviewActivity.ATTACHMENT, attachment)
+                    }
+                )
+            }
+            Attachment.Type.GENERIC -> {
+                val uri = attachment.uri(requireContext()) ?: return
+                val mimeType = requireContext().contentResolver.getType(uri)
+                val intent = Intent(Intent.ACTION_VIEW).apply {
+                    setDataAndType(uri, mimeType ?: "*/*")
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                try {
+                    startActivity(intent)
+                } catch (_: Exception) {
+                    Toast.makeText(requireContext(), "没有可打开此文件的应用", Toast.LENGTH_SHORT).show()
+                }
+            }
+            else -> {
+                startActivity(
+                    Intent(requireContext(), MediaActivity::class.java).apply {
+                        putExtra(MediaActivity.ATTACHMENT, attachment)
+                    }
                 )
             }
         }
