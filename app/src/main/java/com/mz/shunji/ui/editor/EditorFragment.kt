@@ -56,10 +56,8 @@ import com.google.android.material.transition.MaterialSharedAxis
 import io.noties.markwon.Markwon
 import io.noties.markwon.editor.MarkwonEditor
 import io.noties.markwon.editor.MarkwonEditorTextWatcher
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import org.commonmark.node.Code
 import org.koin.android.ext.android.inject
 import org.koin.androidx.viewmodel.ext.android.viewModel
@@ -142,18 +140,6 @@ class EditorFragment : BaseFragment(R.layout.fragment_editor) {
     private var isNoteDeleted: Boolean = false
     private var markwonTextWatcher: TextWatcher? = null
     private var onBackPressHandled: Boolean = false
-
-    // Inline marker tracking: maps zero-width spaces in EditText back to original markers
-    private var inlineMarkersOrdered: List<String> = emptyList()
-    private var isSettingInlineContent: Boolean = false
-
-    private val inlineRerenderRunnable = Runnable {
-        data.note?.let { note ->
-            if (model.editorMode == EditorViewModel.EditorMode.VIEW_EDIT && note.isInlineMode) {
-                renderCurrentInlineContent(note)
-            }
-        }
-    }
 
     @ColorInt
     private var backgroundColor: Int = Color.TRANSPARENT
@@ -370,29 +356,8 @@ class EditorFragment : BaseFragment(R.layout.fragment_editor) {
         }
 
         binding.fabChangeMode.setOnClickListener {
-            if (model.editorMode == EditorViewModel.EditorMode.VIEW_EDIT) return@setOnClickListener
-            val prevMode = model.editorMode
-            model.cycleMode()
-            updateEditMode()
-            if (model.editorMode == EditorViewModel.EditorMode.EDIT) {
-                requestFocusForFields(true)
-            } else if (prevMode == EditorViewModel.EditorMode.EDIT) {
-                view.hideKeyboard()
-            }
-        }
-
-        binding.fabChangeMode.setOnLongClickListener {
-            model.toggleViewEdit()
-            updateEditMode()
-            if (model.editorMode == EditorViewModel.EditorMode.VIEW_EDIT) {
-                view.hideKeyboard()
-            } else {
-                // Post to ensure EditText is visible before requesting focus
-                view.post {
-                    requestFocusForFields(true)
-                }
-            }
-            true
+            updateEditMode(!model.inEditMode)
+            if (model.inEditMode) requestFocusForFields(true) else view.hideKeyboard()
         }
     }
 
@@ -448,14 +413,8 @@ class EditorFragment : BaseFragment(R.layout.fragment_editor) {
                 }
 
                 R.id.action_change_mode -> {
-                    val prevMode = model.editorMode
-                    model.cycleMode()
-                    updateEditMode()
-                    if (model.editorMode == EditorViewModel.EditorMode.EDIT) {
-                        requestFocusForFields(true)
-                    } else if (prevMode == EditorViewModel.EditorMode.EDIT) {
-                        view?.hideKeyboard()
-                    }
+                    updateEditMode(!model.inEditMode)
+                    if (model.inEditMode) requestFocusForFields(true) else view?.hideKeyboard()
                     setupMenuItems(note, note.reminders.isNotEmpty())
                 }
 
@@ -573,28 +532,17 @@ class EditorFragment : BaseFragment(R.layout.fragment_editor) {
             override fun onItemClick(position: Int, viewBinding: LayoutAttachmentBinding) {
                 val attachment = attachmentsAdapter.getItemAtPosition(position)
 
-                when (attachment.type) {
-                    Attachment.Type.HTML -> {
-                        startActivity(
-                            Intent(requireContext(), HtmlPreviewActivity::class.java).apply {
-                                putExtra(HtmlPreviewActivity.ATTACHMENT, attachment)
-                            }
-                        )
-                    }
-                    else -> {
-                        if (data.openMediaInternally) {
-                            startActivity(
-                                Intent(requireContext(), MediaActivity::class.java).apply {
-                                    putExtra(MediaActivity.ATTACHMENT, attachment)
-                                }
-                            )
-                        } else {
-                            Intent(Intent.ACTION_VIEW).apply {
-                                data = attachment.uri(requireContext()) ?: return@apply
-                                flags = Intent.FLAG_GRANT_READ_URI_PERMISSION
-                                startActivity(this)
-                            }
+                if (data.openMediaInternally) {
+                    startActivity(
+                        Intent(requireContext(), MediaActivity::class.java).apply {
+                            putExtra(MediaActivity.ATTACHMENT, attachment)
                         }
+                    )
+                } else {
+                    Intent(Intent.ACTION_VIEW).apply {
+                        data = attachment.uri(requireContext()) ?: return@apply
+                        flags = Intent.FLAG_GRANT_READ_URI_PERMISSION
+                        startActivity(this)
                     }
                 }
             }
@@ -610,7 +558,7 @@ class EditorFragment : BaseFragment(R.layout.fragment_editor) {
                             EditAttachmentDialog.build(noteId, attachment.path).show(parentFragmentManager, null)
                         }
                         action(R.string.action_delete, R.drawable.ic_bin) {
-                            deleteAttachmentWithHtmlCleanup(attachment)
+                            model.deleteAttachment(attachment)
                         }
                         action(R.string.action_share, R.drawable.ic_share) {
                             shareAttachment(requireContext(), attachment)
@@ -632,8 +580,7 @@ class EditorFragment : BaseFragment(R.layout.fragment_editor) {
     private fun setMarkdownToolbarVisibility(note: Note? = data.note) = with(binding) {
         if (note == null) return@with
 
-        val isViewEditMode = model.editorMode == EditorViewModel.EditorMode.VIEW_EDIT
-        containerBottomToolbar.isVisible = !isList && note.isMarkdownEnabled && model.editorMode != EditorViewModel.EditorMode.READ && (contentHasFocus || isViewEditMode)
+        containerBottomToolbar.isVisible = !isList && note.isMarkdownEnabled && model.inEditMode && contentHasFocus
 
         scrollView.updateLayoutParams<ConstraintLayout.LayoutParams> {
             val actionBarSize = requireContext().getDimensionAttribute(R.attr.actionBarSize) ?: 0
@@ -675,23 +622,11 @@ class EditorFragment : BaseFragment(R.layout.fragment_editor) {
             setRawInputType(InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES)
             doOnTextChanged { text, _, _, _ ->
                 // Only listen for meaningful changes, we do not care about empty text
-                if (data.note == null || isSettingInlineContent) {
+                if (data.note == null) {
                     return@doOnTextChanged
                 }
 
-                val rawText = text.toString().trim()
-                val contentToSave = if (data.note?.isInlineMode == true && inlineMarkersOrdered.isNotEmpty()) {
-                    restoreMarkersFromDisplay(rawText)
-                } else {
-                    rawText
-                }
-                model.setNoteContent(contentToSave)
-
-                // Re-render inline content in view-edit mode
-                if (model.editorMode == EditorViewModel.EditorMode.VIEW_EDIT && data.note?.isInlineMode == true) {
-                    binding.containerContentPreviewInline.removeCallbacks(inlineRerenderRunnable)
-                    binding.containerContentPreviewInline.postDelayed(inlineRerenderRunnable, 300)
-                }
+                model.setNoteContent(text.toString().trim())
             }
             setOnFocusChangeListener { _, hasFocus ->
                 contentHasFocus = hasFocus
@@ -769,11 +704,7 @@ class EditorFragment : BaseFragment(R.layout.fragment_editor) {
         findItem(R.id.action_change_mode)?.apply {
             // if view/edit mode FAB isn't displayed (user pref) show it in the top menu
             if (!data.showFabChangeMode) {
-                setIcon(when (model.editorMode) {
-                    EditorViewModel.EditorMode.READ -> R.drawable.ic_pencil
-                    EditorViewModel.EditorMode.VIEW_EDIT -> R.drawable.ic_show
-                    EditorViewModel.EditorMode.EDIT -> R.drawable.ic_edit_view
-                })
+                setIcon(if (model.inEditMode) R.drawable.ic_show else R.drawable.ic_pencil)
 
                 isVisible = !note.isDeleted && !hasNoteEmptyContent(note)
             }
@@ -855,7 +786,7 @@ class EditorFragment : BaseFragment(R.layout.fragment_editor) {
             if (isFirstLoad) {
 
                 if (data.defaultEditorMode == DefaultEditorMode.EDIT) {
-                    model.editorMode = EditorViewModel.EditorMode.EDIT
+                    model.inEditMode = true
                 }
 
                 // apply font size preference
@@ -881,16 +812,9 @@ class EditorFragment : BaseFragment(R.layout.fragment_editor) {
                     isList -> tasksAdapter.submitList(data.note.taskList)
                     else -> {
                         viewLifecycleOwner.lifecycleScope.launchWhenResumed {
-                            val contentForDisplay = if (data.note.isInlineMode) {
-                                isSettingInlineContent = true
-                                stripMarkersForDisplay(data.note.content)
-                            } else {
-                                data.note.content
-                            }
                             editTextContent.withOnlyTextWatcher<MarkwonEditorTextWatcher> {
-                                setText(contentForDisplay)
+                                setText(data.note.content)
                             }
-                            isSettingInlineContent = false
                             val (selStart, selEnd) = model.selectedRange
                             if (selStart >= 0 && selEnd <= editTextContent.length()) {
                                 editTextContent.setSelection(selStart, selEnd)
@@ -1003,8 +927,8 @@ class EditorFragment : BaseFragment(R.layout.fragment_editor) {
             recyclerAttachments.isVisible = !isInline
 
             if (isInline) {
-                containerContentPreviewInline.isVisible = model.editorMode != EditorViewModel.EditorMode.EDIT
-                if (model.editorMode != EditorViewModel.EditorMode.EDIT) {
+                containerContentPreviewInline.isVisible = !model.inEditMode
+                if (!model.inEditMode) {
                     renderCurrentInlineContent(data.note)
                 }
             } else {
@@ -1521,51 +1445,26 @@ class EditorFragment : BaseFragment(R.layout.fragment_editor) {
         }
     }
 
-    private fun updateEditMode(note: Note? = data.note) = with(binding) {
+    private fun updateEditMode(inEditMode: Boolean = model.inEditMode, note: Note? = data.note) = with(binding) {
         // If the note is empty the fragment should open in edit mode by default
         val noteHasEmptyContent = hasNoteEmptyContent(note)
 
-        val mode = when {
-            noteHasEmptyContent && !isNoteDeleted -> EditorViewModel.EditorMode.EDIT
-            isNoteDeleted -> EditorViewModel.EditorMode.READ
-            else -> model.editorMode
-        }
-        if (mode != model.editorMode) model.editorMode = mode
+        model.inEditMode = (inEditMode || noteHasEmptyContent) && !isNoteDeleted
 
-        val isEdit = model.editorMode == EditorViewModel.EditorMode.EDIT
-        val isViewEdit = model.editorMode == EditorViewModel.EditorMode.VIEW_EDIT
-        val isRead = model.editorMode == EditorViewModel.EditorMode.READ
+        textViewTitlePreview.isVisible = !model.inEditMode
+        editTextTitle.isVisible = model.inEditMode
 
-        textViewTitlePreview.isVisible = !isEdit
-        editTextTitle.isVisible = isEdit
-
-        actionAddTask.isVisible = isList && isEdit
+        actionAddTask.isVisible = isList && model.inEditMode
         recyclerTasks.doOnPreDraw {
             for (pos in 0 until tasksAdapter.tasks.size) {
-                (recyclerTasks.findViewHolderForAdapterPosition(pos) as? TaskViewHolder)?.isEnabled = isEdit
+                (recyclerTasks.findViewHolderForAdapterPosition(pos) as? TaskViewHolder)?.isEnabled = model.inEditMode
             }
         }
 
         val isInline = note?.isInlineMode == true && !isList
-        textViewContentPreview.isVisible = isRead && !isList && !isInline
-
-        when {
-            isEdit -> {
-                // Edit mode: EditText visible, inline container hidden
-                containerContentPreviewInline.isVisible = false
-                editTextContent.isVisible = !isList
-            }
-            isViewEdit && isInline -> {
-                // View-edit mode: both EditText and inline container visible
-                containerContentPreviewInline.isVisible = true
-                editTextContent.isVisible = !isList
-            }
-            else -> {
-                // Read mode: inline container or text preview
-                containerContentPreviewInline.isVisible = isInline && !isList
-                editTextContent.isVisible = false
-            }
-        }
+        textViewContentPreview.isVisible = !model.inEditMode && !isList && !isInline
+        containerContentPreviewInline.isVisible = !model.inEditMode && !isList && isInline
+        editTextContent.isVisible = model.inEditMode && !isList
 
         val shouldDisplayFAB = data.showFabChangeMode && !isNoteDeleted && !noteHasEmptyContent
         when {
@@ -1576,20 +1475,11 @@ class EditorFragment : BaseFragment(R.layout.fragment_editor) {
             else -> fabChangeMode.show()
         }
 
-        fabChangeMode.setImageResource(when (model.editorMode) {
-            EditorViewModel.EditorMode.READ -> R.drawable.ic_pencil
-            EditorViewModel.EditorMode.VIEW_EDIT -> R.drawable.ic_pencil
-            EditorViewModel.EditorMode.EDIT -> R.drawable.ic_edit_view
-        })
-        fabChangeMode.imageTintList = android.content.res.ColorStateList.valueOf(
-            when (model.editorMode) {
-                EditorViewModel.EditorMode.VIEW_EDIT -> android.graphics.Color.RED
-                else -> android.graphics.Color.WHITE
-            }
-        )
+        fabChangeMode.setImageResource(if (model.inEditMode) R.drawable.ic_edit_view else R.drawable.ic_pencil)
+        fabChangeMode.imageTintList = android.content.res.ColorStateList.valueOf(android.graphics.Color.WHITE)
 
         // Hide floating tool button in READ mode
-        if (isRead) {
+        if (!model.inEditMode) {
             fabTools.isVisible = false
             if (isToolsExpanded) collapseToolOptions()
         } else {
@@ -1597,44 +1487,15 @@ class EditorFragment : BaseFragment(R.layout.fragment_editor) {
         }
         setMarkdownToolbarVisibility(note)
 
-        // Re-render inline content when switching modes or in view-edit mode
-        if (model.editorMode != EditorViewModel.EditorMode.EDIT && isInline && note != null) {
+        // Re-render inline content when switching to read or view-edit mode
+        if (!model.inEditMode && isInline && note != null) {
             containerContentPreviewInline.post {
                 renderCurrentInlineContent(note)
             }
         }
     }
 
-    private fun stripMarkersForDisplay(content: String): String {
-        val markers = mutableListOf<String>()
-        val result = InlineContent.regex.replace(content) { match ->
-            markers.add(match.value)
-            "\u200B"
-        }
-        inlineMarkersOrdered = markers
-        return result
-    }
-
-    private fun restoreMarkersFromDisplay(displayText: String): String {
-        if (inlineMarkersOrdered.isEmpty()) return displayText
-        val sb = StringBuilder(displayText)
-        var zwcIndex = 0
-        var i = 0
-        while (i < sb.length && zwcIndex < inlineMarkersOrdered.size) {
-            if (sb[i] == '\u200B') {
-                val marker = inlineMarkersOrdered[zwcIndex]
-                sb.replace(i, i + 1, marker)
-                zwcIndex++
-                i += marker.length
-            } else {
-                i++
-            }
-        }
-        return sb.toString()
-    }
-
     private fun renderCurrentInlineContent(note: Note) {
-        val isViewEdit = model.editorMode == EditorViewModel.EditorMode.VIEW_EDIT
         val container = binding.containerContentPreviewInline
         val ctx = requireContext()
         val ts = data.editorFontSize.takeIf { it != -1 }?.toFloat()
@@ -1657,14 +1518,6 @@ class EditorFragment : BaseFragment(R.layout.fragment_editor) {
                 model.setNoteContent(newContent)
             }
         }
-        val tapHandler = fun() {
-            model.editorMode = EditorViewModel.EditorMode.EDIT
-            updateEditMode()
-            // Post to ensure EditText is visible before requesting focus
-            binding.containerContentPreviewInline.post {
-                requestFocusForFields(true)
-            }
-        }
 
         renderInlineContent(
             container, ctx, note, mw, textSize = ts,
@@ -1673,8 +1526,6 @@ class EditorFragment : BaseFragment(R.layout.fragment_editor) {
             onAttachmentLongClick = longClickHandler,
             onAttachmentsReordered = reorderHandler,
             onAttachmentDropped = dropHandler,
-            isViewEditMode = isViewEdit,
-            onViewEditTap = tapHandler,
         )
     }
 
@@ -1763,11 +1614,9 @@ class EditorFragment : BaseFragment(R.layout.fragment_editor) {
             val markers = attachments.joinToString("") { InlineContent.markerFor(it) }
             val newContent = (note.content + markers).trim()
             model.insertAttachmentsWithContent(attachments, newContent)
-            isSettingInlineContent = true
             binding.editTextContent.withOnlyTextWatcher<MarkwonEditorTextWatcher> {
-                setText(stripMarkersForDisplay(newContent))
+                setText(newContent)
             }
-            isSettingInlineContent = false
         } else {
             model.insertAttachments(*attachments.toTypedArray())
         }
@@ -1827,19 +1676,6 @@ class EditorFragment : BaseFragment(R.layout.fragment_editor) {
                     val dest = File(htmlBaseDir, file.name)
                     file.copyTo(dest, overwrite = true)
                 }
-
-                // Add marker to note content if files were copied
-                if (associatedFiles.isNotEmpty()) {
-                    val fileNames = associatedFiles.joinToString(",") { it.name }
-                    val marker = "[[html_files:$htmlFileName:$fileNames]]"
-                    val note = data.note
-                    if (note != null) {
-                        val newContent = note.content + "\n$marker"
-                        withContext(Dispatchers.Main) {
-                            model.setNoteContent(newContent)
-                        }
-                    }
-                }
             }
             Toast.makeText(
                 requireContext(),
@@ -1876,47 +1712,9 @@ class EditorFragment : BaseFragment(R.layout.fragment_editor) {
                 }
             }
             action(R.string.action_delete, R.drawable.ic_bin) {
-                deleteAttachmentWithHtmlCleanup(attachment)
-            }
-        }
-    }
-
-    private fun deleteAttachmentWithHtmlCleanup(attachment: Attachment) {
-        val note = data.note ?: return
-        val htmlBaseDir = getHtmlBaseDir(requireContext())
-
-        if (attachment.type == Attachment.Type.HTML) {
-            // Find associated files marker
-            val markerRegex = Regex("\\[\\[html_files:${Regex.escape(attachment.fileName)}:([^\\]]+)\\]\\]")
-            val match = markerRegex.find(note.content)
-
-            // Delete associated files
-            if (match != null) {
-                val fileNames = match.groupValues[1].split(",").filter { it.isNotEmpty() }
-                lifecycleScope.launch {
-                    withContext(Dispatchers.IO) {
-                        for (name in fileNames) {
-                            File(htmlBaseDir, name).delete()
-                        }
-                        File(htmlBaseDir, attachment.fileName).delete()
-                    }
-                }
-                // Remove marker from content
-                val newContent = note.content.replace(match.value, "").trim()
+                val newContent = note.content.replace(InlineContent.markerFor(attachment), "").trim()
                 model.deleteAttachmentWithContent(attachment, newContent)
-            } else {
-                // No marker, just delete the HTML file
-                lifecycleScope.launch {
-                    withContext(Dispatchers.IO) {
-                        File(htmlBaseDir, attachment.fileName).delete()
-                    }
-                }
-                model.deleteAttachment(attachment)
             }
-        } else {
-            // Non-HTML attachment
-            val newContent = note.content.replace(InlineContent.markerFor(attachment), "").trim()
-            model.deleteAttachmentWithContent(attachment, newContent)
         }
     }
 
