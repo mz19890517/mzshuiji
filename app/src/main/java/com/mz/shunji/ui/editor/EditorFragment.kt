@@ -142,6 +142,11 @@ class EditorFragment : BaseFragment(R.layout.fragment_editor) {
     private var isNoteDeleted: Boolean = false
     private var markwonTextWatcher: TextWatcher? = null
     private var onBackPressHandled: Boolean = false
+
+    // Inline marker tracking: maps zero-width spaces in EditText back to original markers
+    private var inlineMarkersOrdered: List<String> = emptyList()
+    private var isSettingInlineContent: Boolean = false
+
     private val inlineRerenderRunnable = Runnable {
         data.note?.let { note ->
             if (model.editorMode == EditorViewModel.EditorMode.VIEW_EDIT && note.isInlineMode) {
@@ -568,17 +573,28 @@ class EditorFragment : BaseFragment(R.layout.fragment_editor) {
             override fun onItemClick(position: Int, viewBinding: LayoutAttachmentBinding) {
                 val attachment = attachmentsAdapter.getItemAtPosition(position)
 
-                if (data.openMediaInternally) {
-                    startActivity(
-                        Intent(requireContext(), MediaActivity::class.java).apply {
-                            putExtra(MediaActivity.ATTACHMENT, attachment)
+                when (attachment.type) {
+                    Attachment.Type.HTML -> {
+                        startActivity(
+                            Intent(requireContext(), HtmlPreviewActivity::class.java).apply {
+                                putExtra(HtmlPreviewActivity.ATTACHMENT, attachment)
+                            }
+                        )
+                    }
+                    else -> {
+                        if (data.openMediaInternally) {
+                            startActivity(
+                                Intent(requireContext(), MediaActivity::class.java).apply {
+                                    putExtra(MediaActivity.ATTACHMENT, attachment)
+                                }
+                            )
+                        } else {
+                            Intent(Intent.ACTION_VIEW).apply {
+                                data = attachment.uri(requireContext()) ?: return@apply
+                                flags = Intent.FLAG_GRANT_READ_URI_PERMISSION
+                                startActivity(this)
+                            }
                         }
-                    )
-                } else {
-                    Intent(Intent.ACTION_VIEW).apply {
-                        data = attachment.uri(requireContext()) ?: return@apply
-                        flags = Intent.FLAG_GRANT_READ_URI_PERMISSION
-                        startActivity(this)
                     }
                 }
             }
@@ -659,11 +675,17 @@ class EditorFragment : BaseFragment(R.layout.fragment_editor) {
             setRawInputType(InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES)
             doOnTextChanged { text, _, _, _ ->
                 // Only listen for meaningful changes, we do not care about empty text
-                if (data.note == null) {
+                if (data.note == null || isSettingInlineContent) {
                     return@doOnTextChanged
                 }
 
-                model.setNoteContent(text.toString().trim())
+                val rawText = text.toString().trim()
+                val contentToSave = if (data.note?.isInlineMode == true && inlineMarkersOrdered.isNotEmpty()) {
+                    restoreMarkersFromDisplay(rawText)
+                } else {
+                    rawText
+                }
+                model.setNoteContent(contentToSave)
 
                 // Re-render inline content in view-edit mode
                 if (model.editorMode == EditorViewModel.EditorMode.VIEW_EDIT && data.note?.isInlineMode == true) {
@@ -859,9 +881,16 @@ class EditorFragment : BaseFragment(R.layout.fragment_editor) {
                     isList -> tasksAdapter.submitList(data.note.taskList)
                     else -> {
                         viewLifecycleOwner.lifecycleScope.launchWhenResumed {
-                            editTextContent.withOnlyTextWatcher<MarkwonEditorTextWatcher> {
-                                setText(data.note.content)
+                            val contentForDisplay = if (data.note.isInlineMode) {
+                                isSettingInlineContent = true
+                                stripMarkersForDisplay(data.note.content)
+                            } else {
+                                data.note.content
                             }
+                            editTextContent.withOnlyTextWatcher<MarkwonEditorTextWatcher> {
+                                setText(contentForDisplay)
+                            }
+                            isSettingInlineContent = false
                             val (selStart, selEnd) = model.selectedRange
                             if (selStart >= 0 && selEnd <= editTextContent.length()) {
                                 editTextContent.setSelection(selStart, selEnd)
@@ -1576,6 +1605,34 @@ class EditorFragment : BaseFragment(R.layout.fragment_editor) {
         }
     }
 
+    private fun stripMarkersForDisplay(content: String): String {
+        val markers = mutableListOf<String>()
+        val result = InlineContent.regex.replace(content) { match ->
+            markers.add(match.value)
+            "\u200B"
+        }
+        inlineMarkersOrdered = markers
+        return result
+    }
+
+    private fun restoreMarkersFromDisplay(displayText: String): String {
+        if (inlineMarkersOrdered.isEmpty()) return displayText
+        val sb = StringBuilder(displayText)
+        var zwcIndex = 0
+        var i = 0
+        while (i < sb.length && zwcIndex < inlineMarkersOrdered.size) {
+            if (sb[i] == '\u200B') {
+                val marker = inlineMarkersOrdered[zwcIndex]
+                sb.replace(i, i + 1, marker)
+                zwcIndex++
+                i += marker.length
+            } else {
+                i++
+            }
+        }
+        return sb.toString()
+    }
+
     private fun renderCurrentInlineContent(note: Note) {
         val isViewEdit = model.editorMode == EditorViewModel.EditorMode.VIEW_EDIT
         val container = binding.containerContentPreviewInline
@@ -1706,9 +1763,11 @@ class EditorFragment : BaseFragment(R.layout.fragment_editor) {
             val markers = attachments.joinToString("") { InlineContent.markerFor(it) }
             val newContent = (note.content + markers).trim()
             model.insertAttachmentsWithContent(attachments, newContent)
+            isSettingInlineContent = true
             binding.editTextContent.withOnlyTextWatcher<MarkwonEditorTextWatcher> {
-                setText(newContent)
+                setText(stripMarkersForDisplay(newContent))
             }
+            isSettingInlineContent = false
         } else {
             model.insertAttachments(*attachments.toTypedArray())
         }
