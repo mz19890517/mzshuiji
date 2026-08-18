@@ -56,8 +56,10 @@ import com.google.android.material.transition.MaterialSharedAxis
 import io.noties.markwon.Markwon
 import io.noties.markwon.editor.MarkwonEditor
 import io.noties.markwon.editor.MarkwonEditorTextWatcher
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.commonmark.node.Code
 import org.koin.android.ext.android.inject
 import org.koin.androidx.viewmodel.ext.android.viewModel
@@ -1775,7 +1777,7 @@ class EditorFragment : BaseFragment(R.layout.fragment_editor) {
                     if (note != null) {
                         val newContent = note.content + "\n$marker"
                         withContext(Dispatchers.Main) {
-                            model.updateContent(newContent)
+                            model.setNoteContent(newContent)
                         }
                     }
                 }

@@ -109,7 +109,7 @@ object ExportUtils {
                         y += textLayout.height + 4f
                     }
                     is PdfSegment.Image -> {
-                        val bitmap = loadBitmapForPdf(context, segment.attachment)
+                        val bitmap = loadBitmapForPdf(context, segment.noteAttachment)
                         if (bitmap != null) {
                             val scale = contentWidth / bitmap.width.toFloat()
                             val scaledHeight = bitmap.height * scale
@@ -120,8 +120,8 @@ object ExportUtils {
                             y += scaledHeight + 8f
                         }
                     }
-                    is PdfSegment.Attachment -> {
-                        val label = "[${segment.attachment.type.name}] ${segment.attachment.fileName}"
+                    is PdfSegment.FileAttachment -> {
+                        val label = "[${segment.noteAttachment.type.name}] ${segment.noteAttachment.fileName}"
                         checkPage(20f)
                         canvas.drawText(label, leftMargin, y + 12f, attachmentPaint)
                         y += 20f
@@ -145,8 +145,8 @@ object ExportUtils {
 
     private sealed class PdfSegment {
         data class Text(val text: String) : PdfSegment()
-        data class Image(val attachment: Attachment) : PdfSegment()
-        data class Attachment(val attachment: Attachment) : PdfSegment()
+        data class Image(val noteAttachment: Attachment) : PdfSegment()
+        data class FileAttachment(val noteAttachment: Attachment) : PdfSegment()
     }
 
     private fun parseContentForPdf(content: String, attachments: List<Attachment>): List<PdfSegment> {
@@ -166,7 +166,7 @@ object ExportUtils {
                     if (attachment != null) {
                         segments.add(
                             if (attachment.type == Attachment.Type.IMAGE) PdfSegment.Image(attachment)
-                            else PdfSegment.Attachment(attachment)
+                            else PdfSegment.FileAttachment(attachment)
                         )
                     }
                 }
