@@ -46,6 +46,7 @@ class App : Application(), ImageLoaderFactory {
     override fun newImageLoader(): ImageLoader {
         return ImageLoader.Builder(applicationContext)
             .crossfade(true)
+            .allowHardware(false)
             .memoryCache {
                 MemoryCache.Builder(applicationContext).maxSizePercent(0.05).build()
             }
