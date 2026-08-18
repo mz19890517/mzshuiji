@@ -206,6 +206,15 @@ class NoteViewHolder(
         updateTags(note.tags)
         setupAttachments(note)
 
+        // Limit card max height to 280dp
+        val maxHeight = (280 * context.resources.displayMetrics.density).toInt()
+        binding.recyclerAttachments.post {
+            val card = binding.root
+            if (card.height > maxHeight) {
+                card.layoutParams = card.layoutParams.apply { height = maxHeight }
+            }
+        }
+
         ViewCompat.setTransitionName(binding.root, "editor_${note.id}")
     }
 

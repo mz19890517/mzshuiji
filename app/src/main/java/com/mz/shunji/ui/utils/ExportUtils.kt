@@ -3,22 +3,24 @@ package com.mz.shunji.ui.utils
 import android.content.ContentValues
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.RectF
 import android.graphics.pdf.PdfDocument
 import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
-import android.print.PrintAttributes
-import android.print.PrintDocumentAdapter
-import android.print.PrintManager
 import android.view.View
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.core.widget.NestedScrollView
 import android.widget.Toast
+import com.mz.shunji.data.model.Attachment
 import com.mz.shunji.data.model.Note
+import com.mz.shunji.ui.attachments.InlineContent
+import com.mz.shunji.ui.attachments.getAttachmentUri
 import java.io.File
 import java.io.FileOutputStream
 import java.text.SimpleDateFormat
@@ -35,10 +37,12 @@ object ExportUtils {
             val fileName = "${safeTitle}_${timestamp}.pdf"
 
             val document = PdfDocument()
-            val pageInfo = PdfDocument.PageInfo.Builder(595, 842, 1).create() // A4 size
-            val page = document.startPage(pageInfo)
+            val pageWidth = 595 // A4 width in points
+            val pageHeight = 842 // A4 height in points
+            val leftMargin = 40f
+            val rightMargin = 555f
+            val contentWidth = rightMargin - leftMargin
 
-            val canvas = page.canvas
             val titlePaint = Paint().apply {
                 color = Color.BLACK
                 isAntiAlias = true
@@ -52,81 +56,81 @@ object ExportUtils {
                 textSize = 12f
                 typeface = android.graphics.Typeface.DEFAULT
             }
+            val attachmentPaint = Paint().apply {
+                color = Color.GRAY
+                isAntiAlias = true
+                textSize = 11f
+                typeface = android.graphics.Typeface.DEFAULT
+            }
 
+            var currentPage = document.startPage(PdfDocument.PageInfo.Builder(pageWidth, pageHeight, 1).create())
+            var canvas = currentPage.canvas
             var y = 50f
-            val leftMargin = 40f
-            val rightMargin = 555f
-            val lineHeight = 20f
 
-            // Draw title using StaticLayout for proper CJK rendering
+            fun checkPage(neededHeight: Float) {
+                if (y + neededHeight > pageHeight - 50f) {
+                    document.finishPage(currentPage)
+                    val pageInfo = PdfDocument.PageInfo.Builder(pageWidth, pageHeight, document.pages.size + 1).create()
+                    currentPage = document.startPage(pageInfo)
+                    canvas = currentPage.canvas
+                    y = 50f
+                }
+            }
+
+            // Draw title
             val titleLayout = android.text.StaticLayout.Builder.obtain(
                 title, 0, title.length,
-                android.text.TextPaint(titlePaint),
-                (rightMargin - leftMargin).toInt()
-            ).setAlignment(android.text.Layout.Alignment.ALIGN_NORMAL)
-                .setLineSpacing(0f, 1f)
-                .build()
+                android.text.TextPaint(titlePaint), contentWidth.toInt()
+            ).setAlignment(android.text.Layout.Alignment.ALIGN_NORMAL).build()
             canvas.save()
             canvas.translate(leftMargin, y)
             titleLayout.draw(canvas)
             canvas.restore()
             y += titleLayout.height + 10f
 
-            // Draw content using StaticLayout for proper CJK rendering
-            val content = if (note.isList) note.taskListToString(withCheckmarks = true) else note.content
-            val contentLayout = android.text.StaticLayout.Builder.obtain(
-                content, 0, content.length,
-                android.text.TextPaint(contentPaint),
-                (rightMargin - leftMargin).toInt()
-            ).setAlignment(android.text.Layout.Alignment.ALIGN_NORMAL)
-                .setLineSpacing(0f, 1f)
-                .build()
+            // Parse content and draw
+            val rawContent = if (note.isList) note.taskListToString(withCheckmarks = true) else note.content
+            val segments = parseContentForPdf(rawContent, note.attachments)
 
-            var contentOffset = 0
-            val pageHeight = 790f
-            while (contentOffset < content.length) {
-                canvas.save()
-                canvas.translate(leftMargin, y)
-                val partialLayout = android.text.StaticLayout.Builder.obtain(
-                    content, contentOffset, content.length,
-                    android.text.TextPaint(contentPaint),
-                    (rightMargin - leftMargin).toInt()
-                ).setAlignment(android.text.Layout.Alignment.ALIGN_NORMAL)
-                    .setLineSpacing(0f, 1f)
-                    .build()
-
-                // Find how many lines fit on this page
-                var linesUsed = 0
-                for (i in 0 until partialLayout.lineCount) {
-                    val lineBottom = partialLayout.getLineBottom(i)
-                    if (lineBottom > pageHeight - y + 50f) break
-                    linesUsed++
+            for (segment in segments) {
+                when (segment) {
+                    is PdfSegment.Text -> {
+                        val stripped = stripMarkdownForPdf(segment.text)
+                        if (stripped.isBlank()) continue
+                        val textLayout = android.text.StaticLayout.Builder.obtain(
+                            stripped, 0, stripped.length,
+                            android.text.TextPaint(contentPaint), contentWidth.toInt()
+                        ).setAlignment(android.text.Layout.Alignment.ALIGN_NORMAL).build()
+                        checkPage(textLayout.height.toFloat())
+                        canvas.save()
+                        canvas.translate(leftMargin, y)
+                        textLayout.draw(canvas)
+                        canvas.restore()
+                        y += textLayout.height + 4f
+                    }
+                    is PdfSegment.Image -> {
+                        val bitmap = loadBitmapForPdf(context, segment.attachment)
+                        if (bitmap != null) {
+                            val scale = contentWidth / bitmap.width.toFloat()
+                            val scaledHeight = bitmap.height * scale
+                            checkPage(scaledHeight + 10f)
+                            val destRect = RectF(leftMargin, y, leftMargin + contentWidth, y + scaledHeight)
+                            canvas.drawBitmap(bitmap, null, destRect, null)
+                            bitmap.recycle()
+                            y += scaledHeight + 8f
+                        }
+                    }
+                    is PdfSegment.Attachment -> {
+                        val label = "[${segment.attachment.type.name}] ${segment.attachment.fileName}"
+                        checkPage(20f)
+                        canvas.drawText(label, leftMargin, y + 12f, attachmentPaint)
+                        y += 20f
+                    }
                 }
-                if (linesUsed == 0) linesUsed = 1
-
-                val visibleLayout = android.text.StaticLayout.Builder.obtain(
-                    content, contentOffset, content.length,
-                    android.text.TextPaint(contentPaint),
-                    (rightMargin - leftMargin).toInt()
-                ).setAlignment(android.text.Layout.Alignment.ALIGN_NORMAL)
-                    .setLineSpacing(0f, 1f)
-                    .build()
-
-                visibleLayout.draw(canvas)
-                canvas.restore()
-
-                contentOffset = visibleLayout.getLineEnd(linesUsed - 1)
-                if (contentOffset >= content.length) break
-
-                document.finishPage(page)
-                val newPageInfo = PdfDocument.PageInfo.Builder(595, 842, document.pages.size + 1).create()
-                val newPage = document.startPage(newPageInfo)
-                y = 50f
             }
 
-            document.finishPage(page)
+            document.finishPage(currentPage)
 
-            // Save to cache
             val file = File(context.cacheDir, fileName)
             FileOutputStream(file).use { out ->
                 document.writeTo(out)
@@ -137,6 +141,64 @@ object ExportUtils {
             e.printStackTrace()
             null
         }
+    }
+
+    private sealed class PdfSegment {
+        data class Text(val text: String) : PdfSegment()
+        data class Image(val attachment: Attachment) : PdfSegment()
+        data class Attachment(val attachment: Attachment) : PdfSegment()
+    }
+
+    private fun parseContentForPdf(content: String, attachments: List<Attachment>): List<PdfSegment> {
+        val segments = mutableListOf<PdfSegment>()
+        val parts = content.split(InlineContent.regex)
+
+        for (i in parts.indices) {
+            val text = parts[i].trim()
+            if (text.isNotEmpty()) {
+                segments.add(PdfSegment.Text(text))
+            }
+            if (i < parts.size - 1) {
+                val match = InlineContent.regex.find(content, if (i == 0) 0 else content.indexOf(parts[i]) + parts[i].length)
+                if (match != null) {
+                    val path = match.groupValues[1]
+                    val attachment = attachments.find { it.path == path }
+                    if (attachment != null) {
+                        segments.add(
+                            if (attachment.type == Attachment.Type.IMAGE) PdfSegment.Image(attachment)
+                            else PdfSegment.Attachment(attachment)
+                        )
+                    }
+                }
+            }
+        }
+        return segments
+    }
+
+    private fun loadBitmapForPdf(context: Context, attachment: Attachment): Bitmap? {
+        return try {
+            val uri = getAttachmentUri(context, attachment.path) ?: return null
+            context.contentResolver.openInputStream(uri)?.use { input ->
+                BitmapFactory.decodeStream(input)
+            }
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    private fun stripMarkdownForPdf(text: String): String {
+        var result = text
+        result = result.replace(Regex("\\*{1,3}([^*]+)\\*{1,3}"), "$1")
+        result = result.replace(Regex("~~([^~]+)~~"), "$1")
+        result = result.replace(Regex("`([^`]+)`"), "$1")
+        result = result.replace(Regex("^>\\s*", RegexOption.MULTILINE), "")
+        result = result.replace(Regex("^#{1,6}\\s*", RegexOption.MULTILINE), "")
+        result = result.replace(Regex("^-{3,}$", RegexOption.MULTILINE), "")
+        result = result.replace(Regex("\\[([^]]+)]\\([^)]+\\)"), "$1")
+        result = result.replace(Regex("!\\[([^]]*)]\\([^)]+\\)"), "$1")
+        result = result.replace(Regex("\\[attachment:[^\\]]*\\]"), "")
+        result = result.replace(Regex("\\n{3,}"), "\n\n")
+        return result.trim()
     }
 
     private fun breakText(canvas: Canvas, text: String, paint: Paint, maxWidth: Float): List<String> {

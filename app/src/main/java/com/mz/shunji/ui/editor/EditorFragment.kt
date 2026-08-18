@@ -140,6 +140,13 @@ class EditorFragment : BaseFragment(R.layout.fragment_editor) {
     private var isNoteDeleted: Boolean = false
     private var markwonTextWatcher: TextWatcher? = null
     private var onBackPressHandled: Boolean = false
+    private val inlineRerenderRunnable = Runnable {
+        data.note?.let { note ->
+            if (model.editorMode == EditorViewModel.EditorMode.VIEW_EDIT && note.isInlineMode) {
+                renderCurrentInlineContent(note)
+            }
+        }
+    }
 
     @ColorInt
     private var backgroundColor: Int = Color.TRANSPARENT
@@ -356,6 +363,7 @@ class EditorFragment : BaseFragment(R.layout.fragment_editor) {
         }
 
         binding.fabChangeMode.setOnClickListener {
+            if (model.editorMode == EditorViewModel.EditorMode.VIEW_EDIT) return@setOnClickListener
             val prevMode = model.editorMode
             model.cycleMode()
             updateEditMode()
@@ -584,7 +592,7 @@ class EditorFragment : BaseFragment(R.layout.fragment_editor) {
                             EditAttachmentDialog.build(noteId, attachment.path).show(parentFragmentManager, null)
                         }
                         action(R.string.action_delete, R.drawable.ic_bin) {
-                            model.deleteAttachment(attachment)
+                            deleteAttachmentWithHtmlCleanup(attachment)
                         }
                         action(R.string.action_share, R.drawable.ic_share) {
                             shareAttachment(requireContext(), attachment)
@@ -654,6 +662,12 @@ class EditorFragment : BaseFragment(R.layout.fragment_editor) {
                 }
 
                 model.setNoteContent(text.toString().trim())
+
+                // Re-render inline content in view-edit mode
+                if (model.editorMode == EditorViewModel.EditorMode.VIEW_EDIT && data.note?.isInlineMode == true) {
+                    binding.containerContentPreviewInline.removeCallbacks(inlineRerenderRunnable)
+                    binding.containerContentPreviewInline.postDelayed(inlineRerenderRunnable, 300)
+                }
             }
             setOnFocusChangeListener { _, hasFocus ->
                 contentHasFocus = hasFocus
@@ -1503,8 +1517,24 @@ class EditorFragment : BaseFragment(R.layout.fragment_editor) {
 
         val isInline = note?.isInlineMode == true && !isList
         textViewContentPreview.isVisible = isRead && !isList && !isInline
-        containerContentPreviewInline.isVisible = (isRead || isViewEdit) && !isList && isInline
-        editTextContent.isVisible = isEdit && !isList
+
+        when {
+            isEdit -> {
+                // Edit mode: EditText visible, inline container hidden
+                containerContentPreviewInline.isVisible = false
+                editTextContent.isVisible = !isList
+            }
+            isViewEdit && isInline -> {
+                // View-edit mode: both EditText and inline container visible
+                containerContentPreviewInline.isVisible = true
+                editTextContent.isVisible = !isList
+            }
+            else -> {
+                // Read mode: inline container or text preview
+                containerContentPreviewInline.isVisible = isInline && !isList
+                editTextContent.isVisible = false
+            }
+        }
 
         val shouldDisplayFAB = data.showFabChangeMode && !isNoteDeleted && !noteHasEmptyContent
         when {
@@ -1517,10 +1547,15 @@ class EditorFragment : BaseFragment(R.layout.fragment_editor) {
 
         fabChangeMode.setImageResource(when (model.editorMode) {
             EditorViewModel.EditorMode.READ -> R.drawable.ic_pencil
-            EditorViewModel.EditorMode.VIEW_EDIT -> R.drawable.ic_show
+            EditorViewModel.EditorMode.VIEW_EDIT -> R.drawable.ic_pencil
             EditorViewModel.EditorMode.EDIT -> R.drawable.ic_edit_view
         })
-        fabChangeMode.imageTintList = android.content.res.ColorStateList.valueOf(android.graphics.Color.WHITE)
+        fabChangeMode.imageTintList = android.content.res.ColorStateList.valueOf(
+            when (model.editorMode) {
+                EditorViewModel.EditorMode.VIEW_EDIT -> android.graphics.Color.RED
+                else -> android.graphics.Color.WHITE
+            }
+        )
 
         // Hide floating tool button in READ mode
         if (isRead) {
@@ -1531,7 +1566,7 @@ class EditorFragment : BaseFragment(R.layout.fragment_editor) {
         }
         setMarkdownToolbarVisibility(note)
 
-        // Re-render inline content when switching to read or view-edit mode
+        // Re-render inline content when switching modes or in view-edit mode
         if (model.editorMode != EditorViewModel.EditorMode.EDIT && isInline && note != null) {
             containerContentPreviewInline.post {
                 renderCurrentInlineContent(note)
@@ -1731,6 +1766,19 @@ class EditorFragment : BaseFragment(R.layout.fragment_editor) {
                     val dest = File(htmlBaseDir, file.name)
                     file.copyTo(dest, overwrite = true)
                 }
+
+                // Add marker to note content if files were copied
+                if (associatedFiles.isNotEmpty()) {
+                    val fileNames = associatedFiles.joinToString(",") { it.name }
+                    val marker = "[[html_files:$htmlFileName:$fileNames]]"
+                    val note = data.note
+                    if (note != null) {
+                        val newContent = note.content + "\n$marker"
+                        withContext(Dispatchers.Main) {
+                            model.updateContent(newContent)
+                        }
+                    }
+                }
             }
             Toast.makeText(
                 requireContext(),
@@ -1767,9 +1815,47 @@ class EditorFragment : BaseFragment(R.layout.fragment_editor) {
                 }
             }
             action(R.string.action_delete, R.drawable.ic_bin) {
-                val newContent = note.content.replace(InlineContent.markerFor(attachment), "").trim()
-                model.deleteAttachmentWithContent(attachment, newContent)
+                deleteAttachmentWithHtmlCleanup(attachment)
             }
+        }
+    }
+
+    private fun deleteAttachmentWithHtmlCleanup(attachment: Attachment) {
+        val note = data.note ?: return
+        val htmlBaseDir = getHtmlBaseDir(requireContext())
+
+        if (attachment.type == Attachment.Type.HTML) {
+            // Find associated files marker
+            val markerRegex = Regex("\\[\\[html_files:${Regex.escape(attachment.fileName)}:([^\\]]+)\\]\\]")
+            val match = markerRegex.find(note.content)
+
+            // Delete associated files
+            if (match != null) {
+                val fileNames = match.groupValues[1].split(",").filter { it.isNotEmpty() }
+                lifecycleScope.launch {
+                    withContext(Dispatchers.IO) {
+                        for (name in fileNames) {
+                            File(htmlBaseDir, name).delete()
+                        }
+                        File(htmlBaseDir, attachment.fileName).delete()
+                    }
+                }
+                // Remove marker from content
+                val newContent = note.content.replace(match.value, "").trim()
+                model.deleteAttachmentWithContent(attachment, newContent)
+            } else {
+                // No marker, just delete the HTML file
+                lifecycleScope.launch {
+                    withContext(Dispatchers.IO) {
+                        File(htmlBaseDir, attachment.fileName).delete()
+                    }
+                }
+                model.deleteAttachment(attachment)
+            }
+        } else {
+            // Non-HTML attachment
+            val newContent = note.content.replace(InlineContent.markerFor(attachment), "").trim()
+            model.deleteAttachmentWithContent(attachment, newContent)
         }
     }
 
